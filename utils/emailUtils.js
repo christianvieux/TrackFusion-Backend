@@ -23,8 +23,6 @@ export async function sendOTPCodeToEmail(email, code, purpose) {
   // const verificationLink = `http://yourdomain.com/verify-email?code=${code}`;
   const msg = getEmailMessage(email, code, purpose);
   await sgMail.send(msg);
-
-  console.log("Email sent to:", email, code);
 }
 
 const getEmailMessage = (email, code, purpose) => {
@@ -55,7 +53,6 @@ export async function sendPasswordResetCodeEmail(email, resetLink) {
       subject: 'Password Reset',
       text: `You can reset your password by clicking on the following link: ${resetLink}`,
     };
-    console.log("Sending password reset email to:", email, resetLink);
   
     await sgMail.send(msg);
   }
