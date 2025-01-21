@@ -4,9 +4,12 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
+      - pwd
+      - ls -la
+      - cd Backend
+      - pwd
+      - ls -la
       - npm install
-    build:
-      - npm run build # If you have a build step
 run:
   command: npm start
   network:
