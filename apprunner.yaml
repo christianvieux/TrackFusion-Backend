@@ -3,15 +3,14 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - npm install
+      - n=$(which node)
+      - echo "Node path: $n"
+      - node --version
+      - npm --version
+      - npm ci
     build:
       - echo "Build completed"
 run:
   command: npm start
   network:
     port: 8080
-  env:
-    - name: NODE_ENV
-      value: "production"
-    - name: PORT
-      value: "8080"
