@@ -11,6 +11,7 @@
   "author": "Christian V",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.731.1",
     "@azure/storage-blob": "^12.24.0",
     "@sendgrid/mail": "^8.1.4",
     "axios": "^1.7.7",
