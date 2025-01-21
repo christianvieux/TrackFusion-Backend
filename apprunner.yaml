@@ -1,0 +1,7 @@
+version: 1.0
+build:
+  commands:
+    pre-build:
+      - echo "Starting build process"
+runtime: nodejs18
+  command: docker run -p 8080:8080 ${IMAGE_NAME}

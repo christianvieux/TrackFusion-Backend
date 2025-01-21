@@ -213,9 +213,10 @@ router.get("/:id/authorized-url", async (req, res) => {
         .json({ error: "Track does not exist or Unauthorized" });
     }
 
+    const randomId = Math.random().toString(36).substring(7);
     const authorizedUrl = await authorizeTrackUrl(track.url);
-    console.log(`Authorized URL generated: ${authorizedUrl}`);
-    res.json({ url: authorizedUrl });
+    console.log(`Authorized URL generated: ${authorizedUrl}, randomId: ${randomId}`);
+    res.json({ url: authorizedUrl, randomId });
   } catch (error) {
     console.error("Error fetching authorized URL for track:", error);
     res.status(500).json({ error: "Internal server error" });
