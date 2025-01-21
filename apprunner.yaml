@@ -1,16 +1,17 @@
+# apprunner.yaml
 version: 1.0
 runtime: nodejs18
 build:
   commands:
     pre-build:
-      - n=$(which node)
-      - echo "Node path: $n"
-      - node --version
-      - npm --version
-      - npm ci
+      - npm install
     build:
-      - echo "Build completed"
+      - npm run build # If you have a build step
 run:
   command: npm start
   network:
     port: 8080
+    protocol: http
+env:
+  - name: NODE_ENV
+    value: "production"
