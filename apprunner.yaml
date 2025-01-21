@@ -1,15 +1,17 @@
-# apprunner.yaml
 version: 1.0
+runtime: nodejs18
 build:
   commands:
     pre-build:
-      - echo "Starting build process"
+      - npm install
     build:
-      - echo "Current directory contents:" && ls -la
-      - echo "Building Docker image"
-      - docker build --no-cache -t app .
+      - echo "Build completed"
 run:
-  runtime: nodejs18
-  command: docker run -p 8080:8080 app
+  command: npm start
   network:
     port: 8080
+  env:
+    - name: NODE_ENV
+      value: "production"
+    - name: PORT
+      value: "8080"
