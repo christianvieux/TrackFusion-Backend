@@ -4,9 +4,9 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - apk add --no-cache python3 redis postgresql-client
-      - python3 -m ensurepip
-      - pip3 install -r requirements.txt
+      - apk update
+      - apk add --no-cache python3 py3-pip redis postgresql-client
+      - pip3 install --no-cache-dir -r requirements.txt
     build:
       - npm ci --only=production
 run:
