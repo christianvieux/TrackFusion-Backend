@@ -1,3 +1,4 @@
+# apprunner.yaml
 version: 1.0
 runtime: nodejs18
 build:
@@ -5,6 +6,6 @@ build:
     pre-build:
       - npm install
     build:
-      - docker build -t app .
+      - npm run build
 run:
-  command: docker run -p 8080:8080 app
+  command: npm start
