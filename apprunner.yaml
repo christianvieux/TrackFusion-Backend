@@ -11,6 +11,6 @@ run:
   command: npm start
   network:
     port: 8080
-env:
-  - name: NODE_ENV
-    value: "production"
+  env:
+    - name: NODE_ENV
+      value: "production"
