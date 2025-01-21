@@ -4,15 +4,13 @@ build:
   commands:
     pre-build:
       - echo "Starting build process"
+      - pwd
+      - ls -la
     build:
-      - docker build -t app .
+      - echo "Starting Docker build"
+      - docker build -t app . --progress=plain
 run:
   runtime: nodejs18
   command: /bin/sh /usr/src/app/docker-entrypoint.sh
   network:
     port: 8080
-  env:
-    - name: NODE_ENV
-      value: "production"
-    - name: PORT
-      value: "8080"
