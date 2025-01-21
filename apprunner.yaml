@@ -4,16 +4,20 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - pwd
-      - ls -la
-      - cd Backend
-      - pwd
-      - ls -la
-      - npm install
+      - apk add --no-cache python3 redis postgresql-client
+      - python3 -m ensurepip
+      - pip3 install -r requirements.txt
+    build:
+      - npm ci --only=production
 run:
-  command: npm start
+  command: |
+    redis-server --daemonize yes
+    until redis-cli ping; do echo "Waiting for Redis..."; sleep 1; done
+    npm start
   network:
     port: 8080
   env:
     - name: NODE_ENV
       value: "production"
+    - name: REDIS_URL
+      value: "redis://localhost:6379"
