@@ -1,0 +1,24 @@
+version: 1.0
+runtime: nodejs18
+build:
+  commands:
+    pre_build:
+      - echo "No pre-build steps required"
+    build:
+      - npm install
+run:
+  command: node index.js
+  network:
+    port: 8080
+  env:
+    - name: NODE_ENV
+      value: "production"
+    - name: PORT
+      value: "8080"
+    - name: AWS_REGION
+      value: "us-east-2"
+    - name: DEBUG_SECRETS
+      value: "true"
+  secrets:
+    - name: AWS_SECRETS_ARN
+      value-from: "arn:aws:secretsmanager:us-east-2:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"
