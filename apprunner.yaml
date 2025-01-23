@@ -3,21 +3,17 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - curl -O https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh && bash install.sh
-      - curl https://packages.redis.io/gpg | gpg --dearmor | tee /usr/share/keyrings/redis-archive-keyring.gpg >/dev/null
-      - echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/redis.list
-      - apt-get update && apt-get install -y python3.10 python3-pip redis
+      - apt-get update
+      - apt-get install -y python3.10 python3-pip redis-server
       - python3.10 -m pip install --upgrade pip
       - if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
     build:
       - npm install
 run:
   command: |
-    redis-server --daemonize yes
-    until redis-cli ping; do
-      echo "Waiting for Redis..."
-      sleep 1
-    done
+    service redis-server start
+    sleep 5
+    redis-cli ping
     node index.js
   network:
     port: 8080
@@ -32,8 +28,6 @@ run:
       value: "true"
     - name: PYTHON_VERSION
       value: "3.10.12"
-    - name: PATH
-      value: "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:/usr/local/python3.10/bin"
   secrets:
     - name: AWS_SECRETS_ARN
       value-from: "arn:aws:secretsmanager:us-east-2:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"
