@@ -148,4 +148,5 @@ async function startServer() {
   }
 }
 
-startServer();
+// startServer();
+console.log("Hello from App Runner!");
