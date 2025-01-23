@@ -3,7 +3,10 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - echo "Using existing Dockerfile configuration"
+      - npm ci
+runtime-settings:
+  build:
+    use-dockerfile: true
 run:
   command: docker-entrypoint.sh
   network:
