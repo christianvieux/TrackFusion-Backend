@@ -4,11 +4,13 @@ build:
   commands:
     pre-build:
       - npm ci
-runtime-settings:
-  build:
-    use-dockerfile: true
+      - python -m pip install -r requirements.txt
+    build:
+      - npm run build  # If you have a build step
+    post-build:
+      - echo "Build completed"
 run:
-  command: docker-entrypoint.sh
+  command: npm start
   network:
     port: 8080
   env:
@@ -22,4 +24,4 @@ run:
       value: "true"
   secrets:
     - name: AWS_SECRETS_ARN
-      value-from: "arn:aws:secretsmanager:us-east-2:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"
+      value-from: "arn:aws:secretsmanager:us-east-1:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"
