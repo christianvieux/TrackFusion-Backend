@@ -2,11 +2,11 @@ version: 1.0
 runtime: nodejs18
 build:
   commands:
-    pre-build:
+    build:
+      - echo "Installing dependencies..."
       - npm ci
       - python -m pip install -r requirements.txt
-    build:
-      - npm run build  # If you have a build step
+      - npm run build
     post-build:
       - echo "Build completed"
 run:
