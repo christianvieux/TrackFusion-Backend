@@ -9,7 +9,7 @@ export async function initializeEnvironment() {
     }
 
     const client = new SecretsManagerClient({ 
-      region: 'us-east-1'
+      region: process.env.AWS_REGION
     });
 
     try {

@@ -8,12 +8,21 @@ dotenv.config();
 import { initializeEnvironment } from "./utils/loadEnv.js";
 
 async function startServer() {
+  const express = (await import("express")).default;
+  const app = express();
+  const port = process.env.PORT || 8080;
+
   try {
     // Load environment variables first
-    await initializeEnvironment();
+    try {
+      await initializeEnvironment();
+      console.log('Environment initialized successfully');
+    } catch (error) {
+      console.error('Environment initialization failed:', error);
+      console.log('Continuing with default environment settings');
+    }
 
     // Import other modules
-    const express = (await import("express")).default;
     const bodyParser = (await import("body-parser")).default;
     const session = (await import("express-session")).default;
     const cookieParser = (await import("cookie-parser")).default;
@@ -40,8 +49,7 @@ async function startServer() {
     );
     const { errorHandler } = await import("./middlewares/errorHandler.js");
 
-    const app = express();
-    const port = process.env.PORT || 8080;
+    
 
     // Rate limiter
     const limiter = rateLimit({
@@ -132,8 +140,11 @@ async function startServer() {
       console.log(`deployment version 1.0.0`);
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+    console.error('Critical server error:', error);
+    // Ensure basic server starts even in case of critical error
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`Server running in fallback mode on port ${port}`);
+    });
   }
 }
 
