@@ -5,7 +5,6 @@ build:
     pre-build:
       - echo "Using existing Dockerfile configuration"
 run:
-  runtime-version: 18.x
   command: docker-entrypoint.sh
   network:
     port: 8080
