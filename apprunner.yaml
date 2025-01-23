@@ -1,5 +1,5 @@
 version: 1.0
-runtime: python310
+runtime: python3
 build:
   commands:
     build:
