@@ -20,6 +20,26 @@ export async function initializeEnvironment() {
       const response = await client.send(command);
       const secrets = JSON.parse(response.SecretString);
       
+      // Log available secret keys without their values
+      console.log('Available secret keys:', Object.keys(secrets));
+      
+      // For development/debugging only - use with caution
+      if (process.env.DEBUG_SECRETS === 'true') {
+        console.log('Secret values (DEBUG MODE):', 
+          Object.fromEntries(
+            Object.entries(secrets).map(([key, value]) => [
+              key, 
+              // Mask sensitive values
+              key.toLowerCase().includes('key') || 
+              key.toLowerCase().includes('secret') || 
+              key.toLowerCase().includes('password') 
+                ? '****' 
+                : value
+            ])
+          )
+        );
+      }
+
       Object.entries(secrets).forEach(([key, value]) => {
         process.env[key] = value;
       });
@@ -30,7 +50,8 @@ export async function initializeEnvironment() {
       throw error;
     }
   } else {
-    // In development, dotenv has already loaded the .env file
     console.log('Development environment variables loaded from .env file');
+    // Optional: Log available .env keys in development
+    console.log("Available .env keys in 'development' :", Object.keys(process.env));
   }
 }
