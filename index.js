@@ -1,48 +1,6 @@
 //index.js
 import dotenv from "dotenv";
 dotenv.config();
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from "@aws-sdk/client-secrets-manager";
-
-// function to load secrets from Secrets Manager
-async function loadSecrets() {
-  console.log('Starting secrets loading process...');
-  console.log('Current environment:', process.env.NODE_ENV);
-
-  if (process.env.NODE_ENV === "development") {
-    // In development, use dotenv as usual
-    console.log("Using local .env file");
-    const dotenv = await import("dotenv");
-    dotenv.config();
-  } else {
-    console.log("Attempting to load secrets from AWS Secrets Manager");
-    // In production (App Runner), load from Secrets Manager
-    const client = new SecretsManagerClient();
-    const command = new GetSecretValueCommand({
-      SecretId: "/tfweb/dev/env-variables",
-    });
-
-    try {
-      const response = await client.send(command);
-      console.log("Successfully fetched secrets from AWS");
-      const secrets = JSON.parse(response.SecretString);
-
-      // Set environment variables from secrets
-      Object.keys(secrets).forEach((key) => {
-        process.env[key] = secrets[key];
-      });
-    } catch (error) {
-      console.error("Failed to load secrets:", error);
-      throw error;
-    }
-  }
-  console.log("Environment variables loaded successfully");
-}
-
-// Load secrets before importing other modules
-await loadSecrets();
 
 import express from "express";
 import bodyParser from "body-parser";
@@ -155,5 +113,5 @@ server.listen(port, "0.0.0.0", () => {
     `Server running on port ${port}, bound to all network interfaces`
   );
   console.log(`Environment: ${process.env.NODE_ENV}`);
-  console.log(`deployment version 1.0.0`);
+  console.log(`deployment version 1.0.1`);
 });
