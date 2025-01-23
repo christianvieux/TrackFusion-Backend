@@ -3,19 +3,12 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - yum update -y
-      - yum install -y python3.10 redis
-      - mkdir -p uploads/temp
+      - echo "Using Dockerfile for build"
     build:
-      - npm ci --only=production
+      - docker build -t app .
 run:
-  command: |
-    redis-server --daemonize yes &&
-    until redis-cli ping; do
-      echo "Waiting for Redis..."
-      sleep 1
-    done &&
-    node index.js
+  runtime-version: 1.0
+  command: docker run -p 8080:8080 app
   network:
     port: 8080
   env:
