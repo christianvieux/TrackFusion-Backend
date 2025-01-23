@@ -1,0 +1,21 @@
+version: 1.0
+runtime: nodejs18
+build:
+  commands:
+    pre-build:
+      - echo "Using existing Dockerfile configuration"
+run:
+  runtime-version: 18.x
+  command: docker-entrypoint.sh
+  network:
+    port: 8080
+  env:
+    - name: NODE_ENV
+      value: "production"
+    - name: PORT
+      value: "8080"
+    - name: AWS_REGION
+      value: "us-east-1"
+  secrets:
+    - name: AWS_SECRETS_ARN
+      value: "arn:aws:secretsmanager:us-east-2:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"

@@ -10,3 +10,4 @@ Dockerfile
 tests
 coverage
 .vscode
+apprunner.yaml
