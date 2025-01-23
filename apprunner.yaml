@@ -3,14 +3,9 @@ runtime: nodejs18
 build:
   commands:
     build:
-      - echo "Installing dependencies..."
-      - npm ci
-      - python -m pip install -r requirements.txt
-      - npm run build
-    post-build:
-      - echo "Build completed"
+      - npm install
 run:
-  command: npm start
+  command: node index.js
   network:
     port: 8080
   env:
