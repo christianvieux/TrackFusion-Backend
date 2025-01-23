@@ -20,4 +20,4 @@ run:
       value: "true"
   secrets:
     - name: AWS_SECRETS_ARN
-      value: "arn:aws:secretsmanager:us-east-2:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"
+      value-from: "arn:aws:secretsmanager:us-east-2:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"
