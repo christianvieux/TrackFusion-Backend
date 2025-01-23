@@ -1,13 +1,23 @@
 version: 1.0
-runtime: nodejs18
+runtime: python310
 build:
   commands:
-    pre-build:
-      - echo "Using Dockerfile for build"
     build:
-      - docker build -t app .
+      - python3.10 -m ensurepip --upgrade
+      - python3.10 -m pip install -r requirements.txt
+      - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+      - apt-get install -y nodejs
+      - npm install
+  env:
+    - name: NODE_ENV
+      value: "production"
 run:
-  command: docker run -p 8080:8080 app
+  runtime-version: "3.10"
+  pre-run:
+    - apt-get update
+    - apt-get install -y redis-server
+    - service redis-server start
+  command: node index.js
   network:
     port: 8080
   env:
