@@ -4,7 +4,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "install-all": "npm install",
+    "launch": "node index.js",
     "start": "node index.js",
+    "dev": "nodemon index.js",
     "test": "jest"
   },
   "keywords": [],
