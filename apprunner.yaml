@@ -3,23 +3,18 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - echo "Starting build process"
+      - yum update -y
+      - yum install -y python3.10 redis
+      - mkdir -p uploads/temp
     build:
-      - npm install
+      - npm ci --only=production
 run:
   command: |
-    echo "Installing system dependencies..."
-    apt-get update
-    apt-get install -y python3.10 python3-pip redis-server
-    python3.10 -m pip install --upgrade pip
-    if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
-    
-    echo "Starting Redis server..."
-    service redis-server start
-    sleep 5
-    redis-cli ping
-    
-    echo "Starting Node.js application..."
+    redis-server --daemonize yes &&
+    until redis-cli ping; do
+      echo "Waiting for Redis..."
+      sleep 1
+    done &&
     node index.js
   network:
     port: 8080
@@ -32,8 +27,6 @@ run:
       value: "us-east-2"
     - name: DEBUG_SECRETS
       value: "true"
-    - name: PYTHON_VERSION
-      value: "3.10.12"
   secrets:
     - name: AWS_SECRETS_ARN
       value-from: "arn:aws:secretsmanager:us-east-2:194722409366:secret:TrackFusionWeb-API-SECRET-oJ1QWt"
