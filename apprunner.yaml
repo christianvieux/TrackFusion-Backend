@@ -3,10 +3,11 @@ runtime: nodejs18
 build:
   commands:
     pre-build:
-      - apt-get update
-      - apt-get install -y python3.10 python3-pip redis-server
-      - python3.10 -m pip install --upgrade pip
-      - if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
+      - echo "Starting installation process..."
+      - apt-get update || echo "Update failed with exit code $?"
+      - apt-get install -y python3.10 python3-pip redis-server || echo "Install failed with exit code $?"
+      - python3.10 --version || echo "Python version check failed with exit code $?"
+      - redis-server --version || echo "Redis version check failed with exit code $?"
     build:
       - npm install
 run:
