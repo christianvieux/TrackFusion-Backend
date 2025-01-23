@@ -1,0 +1,59 @@
+name: Deploy to AWS App Runner
+
+on:
+  push:
+    branches:
+      - app-runner-setup # This workflow runs when pushed to main branch
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  APP_RUNNER_SERVICE: ${{ secrets.APP_RUNNER_SERVICE }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Needed for AWS authentication
+      contents: read # Needed to read repository code
+
+    steps:
+        # Step 1: Get your code from GitHub
+      - name: Checkout code
+        uses: actions/checkout@v2
+        # Step 2: Set up AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+        # Step 3: Log into Amazon ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        # Step 4: Build and push your Docker image
+      - name: Build and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        # Step 5: Update App Runner to use the new image
+      - name: Deploy to App Runner
+        run: |
+          aws apprunner update-service \
+          --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }} \
+          --source-configuration '{
+            "AuthenticationConfiguration":{
+              "AccessRoleArn":"${{ secrets.APP_RUNNER_ACCESS_ROLE_ARN }}"
+            },
+            "AutoDeploymentsEnabled":true,
+            "ImageRepository":{
+              "ImageIdentifier":"${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}",
+              "ImageRepositoryType":"ECR",
+              "ImageConfiguration":{
+                "Port":"8080"
+              }
+            }
+          }'
