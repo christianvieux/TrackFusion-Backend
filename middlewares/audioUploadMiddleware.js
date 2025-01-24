@@ -5,10 +5,14 @@ import * as mm from 'music-metadata';
 import { promises as fs } from 'fs';
 
 const audioUploadConfig = {
-  maxFileSize: ((parseInt(process.env.AUDIO_MAX_FILE_SIZE) || 300 )* 1024 * 1024),
-  maxAudioLength: parseInt(process.env.AUDIO_MAX_LENGTH) || 300, // Default 5 minutes in seconds
+  maxFileSize: ((parseInt(process.env.AUDIO_MAX_FILE_SIZE))* 1024 * 1024),
+  maxAudioLength: parseInt(process.env.AUDIO_MAX_LENGTH), // Default 5 minutes in seconds
   allowedTypes: process.env.ALLOWED_AUDIO_TYPES.split(',')
 };
+
+
+//log the audioupload config's maxFileSize in megabytes
+console.log(`MaxFileSize: ${audioUploadConfig.maxFileSize / (1024 * 1024)}MB`);
 
 // Helper function to check audio duration
 const checkAudioDuration = async (filePath) => {

@@ -33,7 +33,7 @@ class FileUploadHandler {
       fieldName: file.fieldname,
       fileName: file.originalname,
       mimeType: file.mimetype,
-      size: file.size ? `${(file.size / (1024 * 1024)).toFixed(2)}MB` : 'Unknown'
+      size: 'Unknown',
     };
 
     const validations = {
@@ -64,14 +64,6 @@ class FileUploadHandler {
       req.rejectedFiles.push(fileDetails);
       return cb(new Error(
         `Invalid ${validation.type} file type (${file.mimetype}). Supported formats: ${validation.allowedTypes.join(", ")}`
-      ));
-    }
-
-    // Size validation
-    if (file.size > validation.maxSize) {
-      req.rejectedFiles.push(fileDetails);
-      return cb(new Error(
-        `File too large. Maximum allowed size is ${validation.maxSize / (1024 * 1024)} MB`
       ));
     }
 
@@ -213,6 +205,27 @@ export const uploadTrackFiles = uploadHandler.audioUpload.fields([
 
 export const processUploadedFiles = async (req, res, next) => {
   try {
+
+    // Check file sizes
+    if (req.files) {
+      for (const [fieldName, files] of Object.entries(req.files)) {
+        for (const file of files) {
+          const isImage = fieldName === 'imageFile';
+          const maxSize = isImage ? config.image.maxFileSize : config.audio.maxFileSize;
+          
+          if (file.size > maxSize) {
+            // Clean up uploaded files
+            const filesToClean = Object.values(req.files).flat().map(f => f.path);
+            await Promise.all(filesToClean.map(path => fs.unlink(path).catch(console.error)));
+            
+            return res.status(400).json({
+              error: `File ${file.originalname} is too large (${(file.size / (1024 * 1024)).toFixed(2)} MB). Maximum allowed size is ${maxSize / (1024 * 1024)} MB`
+            });
+          }
+        }
+      }
+    }
+
     // Process image if present
     if (req.files?.imageFile) {
       await Promise.all(

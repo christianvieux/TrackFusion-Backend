@@ -12,7 +12,12 @@ RUN apk update && apk upgrade && \
     python3 \
     bash \
     redis \
-    postgresql-client
+    postgresql-client \
+    nginx && \
+    mkdir -p /run/nginx
+
+# Copy NGINX configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy package files first for better caching
 COPY package*.json ./
@@ -36,6 +41,7 @@ EXPOSE 8080
 # Create a startup script
 RUN printf '#!/bin/sh\n\
 redis-server --daemonize yes\n\
+nginx\n\
 # Wait for Redis to be ready\n\
 until redis-cli ping; do\n\
   echo "Waiting for Redis..."\n\

@@ -82,14 +82,15 @@ async function startServer() {
     app.use(cors(corsOptions));
 
     // Increase body parser limits
-    app.use(express.json({ limit: '300mb' }));
-    app.use(express.urlencoded({ limit: '300mb', extended: true }));
-    app.use(express.raw({ limit: '300mb' }));
+    const size = '300mb'
+    app.use(express.json({ limit: size }));
+    app.use(express.urlencoded({ limit: size, extended: true }));
+    app.use(express.raw({ limit: size }));
 
     // Update body-parser limits
-    app.use(bodyParser.json({ limit: '300mb' }));
-    app.use(bodyParser.urlencoded({ limit: '300mb', extended: true }));
-    app.use(bodyParser.raw({ limit: '300mb' }));
+    app.use(bodyParser.json({ limit: size }));
+    app.use(bodyParser.urlencoded({ limit: size, extended: true }));
+    app.use(bodyParser.raw({ limit: size }));
 
     // Routes
     app.use("/api/public", publicRoutes);
