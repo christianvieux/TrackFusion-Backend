@@ -6,7 +6,7 @@ dotenv.config();
 
 // Initialize environment before other imports
 import { initializeEnvironment } from "./utils/loadEnv.js";
-const fallbackPorts = [process.env.PORT || 8080, 8081, 8082, 3000];
+const fallbackPorts = [process.env.PORT || 3000, 8081, 8082, 3000];
 
 async function startServer() {
   const http = (await import("http")).default;
