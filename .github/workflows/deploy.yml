@@ -45,15 +45,11 @@ jobs:
           aws apprunner update-service \
           --service-arn ${{ secrets.APP_RUNNER_SERVICE_ARN }} \
           --source-configuration '{
-            "AuthenticationConfiguration":{
-              "AccessRoleArn":"${{ secrets.APP_RUNNER_ACCESS_ROLE_ARN }}"
-            },
-            "AutoDeploymentsEnabled":true,
-            "ImageRepository":{
-              "ImageIdentifier":"${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}",
-              "ImageRepositoryType":"ECR",
-              "ImageConfiguration":{
-                "Port":"8080"
+            "ImageRepository": {
+              "ImageIdentifier": "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}",
+              "ImageRepositoryType": "ECR",
+              "ImageConfiguration": {
+                "Port": "8080"
               }
             }
           }'
