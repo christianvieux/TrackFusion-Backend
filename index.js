@@ -83,12 +83,12 @@ async function startServer() {
     const { errorHandler } = await import("./middlewares/errorHandler.js");
 
     // Rate limiter
-    const limiter = rateLimit({
-      windowMs: 15 * 60 * 1000,
-      max: 100,
-      standardHeaders: true,
-      legacyHeaders: false,
-    });
+    // const limiter = rateLimit({
+    //   windowMs: 15 * 60 * 1000,
+    //   max: 100,
+    //   standardHeaders: true,
+    //   legacyHeaders: false,
+    // });
 
     // Secure middleware (order matters)
     app.use(
@@ -105,7 +105,7 @@ async function startServer() {
       })
     );
     app.set("trust proxy", 1); // If behind reverse proxy
-    app.use(limiter);
+    // app.use(limiter);
     app.use(cookieParser());
     app.use(session(sessionConfig));
 
