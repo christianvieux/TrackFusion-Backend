@@ -49,7 +49,7 @@ jobs:
               "ImageIdentifier": "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}",
               "ImageRepositoryType": "ECR",
               "ImageConfiguration": {
-                "Port": "3080"
+                "Port": "8080"
               }
             }
           }'
