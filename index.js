@@ -15,6 +15,7 @@ async function startServer() {
   
   // Try different ports
   const tryPort = async (port) => {
+    console.log(`Trying port ${port}`, fallbackPorts);
     try {
       const server = http.createServer(app);
       await new Promise((resolve, reject) => {
