@@ -52,7 +52,8 @@ const corsOptions = {
     if (allowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log(`CORS blocked origin: ${normalizedOrigin}`);
+      callback(new Error(`Origin ${normalizedOrigin} not allowed by CORS`));
     }
   },
   credentials: true, // Allow credentials (cookies, authorization headers, etc)

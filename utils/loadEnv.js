@@ -1,3 +1,5 @@
+// utils/loadEnv.js
+
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 
 export async function initializeEnvironment() {

@@ -80,8 +80,8 @@ async function startServer() {
 
     // Basic middleware
     app.use(cors(corsOptions));
-    app.use(bodyParser.json({ limit: "10mb" }));
-    app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
+    app.use(bodyParser.json({ limit: "300mb" }));
+    app.use(bodyParser.urlencoded({ limit: "300mb", extended: true }));
 
     // Routes
     app.use("/api/public", publicRoutes);
@@ -133,11 +133,13 @@ async function startServer() {
     server.timeout = 120000; // 2 minutes
     // Start the server
     server.listen(port, "0.0.0.0", () => {
+      const apiUrl = `http://localhost:${port}/api`;
       console.log(
-        `Server running on port ${port}, bound to all network interfaces`
+      `Server running on port ${port}, bound to all network interfaces`
       );
       console.log(`Environment: ${process.env.NODE_ENV}`);
-      console.log(`deployment version 1.0.0`);
+      console.log(`API base URL: ${apiUrl}`);
+      console.log(`deployment version 2.0.0`);
     });
   } catch (error) {
     console.error('Critical server error:', error);
@@ -149,5 +151,3 @@ async function startServer() {
 }
 
 startServer();
-
-// todo: python version needed is 3.10.12

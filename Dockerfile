@@ -26,11 +26,6 @@ RUN mkdir -p uploads/temp
 # Copy the rest of the application code
 COPY . .
 
-# Set environment variables
-# ENV NODE_ENV=production
-# ENV PORT=8080
-# ENV REDIS_URL=redis://localhost:6379
-
 # Add healthcheck for Redis
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD redis-cli ping || exit 1
