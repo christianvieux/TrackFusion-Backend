@@ -6,20 +6,53 @@ dotenv.config();
 
 // Initialize environment before other imports
 import { initializeEnvironment } from "./utils/loadEnv.js";
+const fallbackPorts = [process.env.PORT || 8080, 8081, 8082, 3000];
 
 async function startServer() {
+  const http = (await import("http")).default;
   const express = (await import("express")).default;
   const app = express();
-  const port = process.env.PORT || 8080;
+  
+  // Try different ports
+  const tryPort = async (port) => {
+    try {
+      const server = http.createServer(app);
+      await new Promise((resolve, reject) => {
+        server
+          .listen(port, "0.0.0.0")
+          .once("listening", () => resolve(server))
+          .once("error", (err) => {
+            if (err.code === "EADDRINUSE") {
+              server.close();
+              reject(err);
+            }
+          });
+      });
+      const apiUrl = `http://localhost:${port}/api`;
+      console.log(
+        `🚀 Server successfully started - Listening on port ${port} (0.0.0.0)`
+      );
+      console.log(`Environment: ${process.env.NODE_ENV}`);
+      console.log(`API base URL: ${apiUrl}`);
+      console.log(`deployment version 2.6.0`);
+      return true;
+    } catch (err) {
+      if (err.code === "EADDRINUSE") {
+        console.log(`Port ${port} in use, trying next port...`);
+        return false;
+      }
+      throw err;
+    }
+  };
 
   try {
     // Load environment variables first
     try {
       await initializeEnvironment();
-      console.log('Environment initialized successfully');
+      console.log("Environment initialized successfully");
     } catch (error) {
-      console.error('Environment initialization failed:', error);
-      console.log('Continuing with default environment settings');
+      console.error("Environment initialization failed:", error);
+      console.log("Continuing with default environment settings");
     }
 
     // Import other modules
@@ -28,7 +61,6 @@ async function startServer() {
     const cookieParser = (await import("cookie-parser")).default;
     const cors = (await import("cors")).default;
     const helmet = (await import("helmet")).default;
-    const http = (await import("http")).default;
     const rateLimit = (await import("express-rate-limit")).default;
 
     // Dynamic imports for routes and services
@@ -48,8 +80,6 @@ async function startServer() {
       "./services/audioServices.js"
     );
     const { errorHandler } = await import("./middlewares/errorHandler.js");
-
-    
 
     // Rate limiter
     const limiter = rateLimit({
@@ -82,7 +112,7 @@ async function startServer() {
     app.use(cors(corsOptions));
 
     // Increase body parser limits
-    const size = '300mb'
+    const size = "300mb";
     app.use(express.json({ limit: size }));
     app.use(express.urlencoded({ limit: size, extended: true }));
     app.use(express.raw({ limit: size }));
@@ -141,21 +171,13 @@ async function startServer() {
     // Server timeout
     server.timeout = 120000; // 2 minutes
     // Start the server
-    server.listen(port, "0.0.0.0", () => {
-      const apiUrl = `http://localhost:${port}/api`;
-      console.log(
-      `Server running on port ${port}, bound to all network interfaces`
-      );
-      console.log(`Environment: ${process.env.NODE_ENV}`);
-      console.log(`API base URL: ${apiUrl}`);
-      console.log(`deployment version 2.5.0`);
-    });
+    for (const port of fallbackPorts) {
+      if (await tryPort(port)) {
+        break;
+      }
+    }
   } catch (error) {
-    console.error('Critical server error:', error);
-    // Ensure basic server starts even in case of critical error
-    app.listen(port, '0.0.0.0', () => {
-      console.log(`Server running in fallback mode on port ${port}`);
-    });
+    console.error("Critical server error:", error);
   }
 }
 

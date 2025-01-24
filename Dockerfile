@@ -16,9 +16,6 @@ RUN apk update && apk upgrade && \
     nginx && \
     mkdir -p /run/nginx
 
-# Copy NGINX configuration
-COPY nginx.conf /etc/nginx/nginx.conf
-
 # Copy package files first for better caching
 COPY package*.json ./
 
@@ -41,14 +38,14 @@ EXPOSE 8080
 # Create a startup script
 RUN printf '#!/bin/sh\n\
 redis-server --daemonize yes\n\
-nginx\n\
-# Wait for Redis to be ready\n\
-until redis-cli ping; do\n\
-  echo "Waiting for Redis..."\n\
-  sleep 1\n\
-done\n\
-npm start' > /usr/src/app/docker-entrypoint.sh && \
+sleep 2\n\
+npm start &\n\
+sleep 5\n\
+nginx -g "daemon off;"\n' > /usr/src/app/docker-entrypoint.sh && \
     chmod +x /usr/src/app/docker-entrypoint.sh
+
+# Copy NGINX configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Verify script exists
 RUN ls -la /usr/src/app/docker-entrypoint.sh
