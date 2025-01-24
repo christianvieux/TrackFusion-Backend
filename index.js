@@ -80,8 +80,16 @@ async function startServer() {
 
     // Basic middleware
     app.use(cors(corsOptions));
-    app.use(bodyParser.json({ limit: "300mb" }));
-    app.use(bodyParser.urlencoded({ limit: "300mb", extended: true }));
+
+    // Increase body parser limits
+    app.use(express.json({ limit: '300mb' }));
+    app.use(express.urlencoded({ limit: '300mb', extended: true }));
+    app.use(express.raw({ limit: '300mb' }));
+
+    // Update body-parser limits
+    app.use(bodyParser.json({ limit: '300mb' }));
+    app.use(bodyParser.urlencoded({ limit: '300mb', extended: true }));
+    app.use(bodyParser.raw({ limit: '300mb' }));
 
     // Routes
     app.use("/api/public", publicRoutes);
@@ -139,7 +147,7 @@ async function startServer() {
       );
       console.log(`Environment: ${process.env.NODE_ENV}`);
       console.log(`API base URL: ${apiUrl}`);
-      console.log(`deployment version 2.0.0`);
+      console.log(`deployment version 2.5.0`);
     });
   } catch (error) {
     console.error('Critical server error:', error);
