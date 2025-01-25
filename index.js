@@ -107,12 +107,18 @@ async function startServer() {
     app.use(cookieParser());
     // app.use(limiter);
     app.use(session(sessionConfig)); // session config
-    
-    // Basic middleware
-    app.use(cors(corsOptions));
+
+    // Basic cors middleware
+    // app.use(cors(corsOptions));
+    app.use(cors({
+      origin: '*',
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'sentry-trace', 'baggage', '*'],
+      credentials: true
+    }));
 
     // Increase body parser limits
-    const size = "300mb";
+    const size = "100mb";
     app.use(express.json({ limit: size }));
     app.use(express.urlencoded({ limit: size, extended: true }));
     app.use(express.raw({ limit: size }));
@@ -134,6 +140,10 @@ async function startServer() {
     // Health check for load balancer
     app.get("/health", (req, res) => {
       res.status(200).json({ status: "healthy" });
+    });
+
+    app.post('/test', (req, res) => {
+      res.send('Success');
     });
 
     // Error handling

@@ -12,9 +12,7 @@ RUN apk update && apk upgrade && \
     python3 \
     bash \
     redis \
-    postgresql-client \
-    nginx && \
-    mkdir -p /run/nginx
+    postgresql-client
 
 # Copy package files first for better caching
 COPY package*.json ./
@@ -33,19 +31,14 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD redis-cli ping || exit 1
 
 # Expose the port the app runs on
-EXPOSE 8080
+EXPOSE 3000
 
 # Create a startup script
 RUN printf '#!/bin/sh\n\
 redis-server --daemonize yes\n\
 sleep 2\n\
-npm start &\n\
-sleep 5\n\
-nginx -g "daemon off;"\n' > /usr/src/app/docker-entrypoint.sh && \
+npm start\n' > /usr/src/app/docker-entrypoint.sh && \
     chmod +x /usr/src/app/docker-entrypoint.sh
-
-# Copy NGINX configuration
-COPY nginx.conf /etc/nginx/nginx.conf
 
 # Verify script exists
 RUN ls -la /usr/src/app/docker-entrypoint.sh
