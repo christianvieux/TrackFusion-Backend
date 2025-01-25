@@ -90,7 +90,7 @@ async function startServer() {
     //   legacyHeaders: false,
     // });
 
-    // Secure middleware (order matters)
+    app.set('trust proxy', 1); // trust first proxy
     app.use(
       helmet({
         contentSecurityPolicy: {
@@ -104,11 +104,10 @@ async function startServer() {
         },
       })
     );
-    app.set("trust proxy", 1); // If behind reverse proxy
-    // app.use(limiter);
     app.use(cookieParser());
-    app.use(session(sessionConfig));
-
+    // app.use(limiter);
+    app.use(session(sessionConfig)); // session config
+    
     // Basic middleware
     app.use(cors(corsOptions));
 
