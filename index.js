@@ -15,7 +15,6 @@ async function startServer() {
   
   // Try different ports
   const tryPort = async (port) => {
-    console.log(`Trying port ${port}`, fallbackPorts);
     try {
       const server = http.createServer(app);
       await new Promise((resolve, reject) => {
@@ -118,7 +117,7 @@ async function startServer() {
     }));
 
     // Increase body parser limits
-    const size = "100mb";
+    const size = "1000mb";
     app.use(express.json({ limit: size }));
     app.use(express.urlencoded({ limit: size, extended: true }));
     app.use(express.raw({ limit: size }));
