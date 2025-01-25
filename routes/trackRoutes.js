@@ -79,6 +79,12 @@ const debugLog = (category, message, data = {}) => {
 // Route to create a new track
 router.post(
   "/create",
+  (req, res, next) => {
+    console.log('Headers:', req.headers);
+    console.log('Content-Length:', req.headers['content-length']);
+    console.log('Request received at /create endpoint');
+    next();
+  },
   authenticateToken,
   uploadTrackFiles,
   processUploadedFiles,
