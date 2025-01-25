@@ -31,7 +31,7 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD redis-cli ping || exit 1
 
 # Expose the port the app runs on
-EXPOSE 3000
+EXPOSE 8080
 
 # Create a startup script
 RUN printf '#!/bin/sh\n\
