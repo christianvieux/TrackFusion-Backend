@@ -6,7 +6,7 @@ dotenv.config();
 
 // Initialize environment before other imports
 import { initializeEnvironment } from "./utils/loadEnv.js";
-const fallbackPorts = [process.env.PORT, 8081, 8082, 3000];
+const fallbackPorts = [8080, 8081, 8082, 3000];
 
 async function startServer() {
   const http = (await import("http")).default;
@@ -34,7 +34,7 @@ async function startServer() {
       );
       console.log(`Environment: ${process.env.NODE_ENV}`);
       console.log(`API base URL: ${apiUrl}`);
-      console.log(`deployment version 2.6.5`);
+      console.log(`deployment version 2.7.0`);
       return true;
     } catch (err) {
       if (err.code === "EADDRINUSE") {
