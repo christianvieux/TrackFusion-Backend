@@ -4,24 +4,16 @@ import { spawn } from "child_process";
 import fs from "fs";
 import Queue from "bull";
 import dotenv from 'dotenv';
+import { exec } from 'child_process';
+import util from 'util';
+
+const execAsync = util.promisify(exec);
+
 dotenv.config();
 
 export const audioQueue = new Queue('audio conversion', process.env.REDIS_URL);
 export const cleanupQueue = new Queue('audio cleanup', process.env.REDIS_URL);
-
-export const convertAudioService = async (data, res) => {
-  const { url, format } = data;
-
-  try {
-    // Add a job to the queue and wait for it to be added
-    const job = await audioQueue.add({ url, format });
-    console.log("Job added to queue", job.id); 
-    res.status(202).send({ message: 'Audio conversion started', jobId: job.id }); // Send the job ID in the response
-  } catch (error) {
-    console.error("Error adding job to queue:", error);
-    res.status(500).send({ error: 'Failed to start audio conversion' });
-  }
-};
+export const audioAnalysisQueue = new Queue('audio-analysis', process.env.REDIS_URL);
 
 export const cleanupJob = async (job, filePath) => {
   try {
@@ -219,4 +211,38 @@ cleanupQueue.process(async (job) => {
 // Add error handling for the cleanup queue
 cleanupQueue.on('error', (error) => {
   console.error("Cleanup queue error:", error);
+});
+
+// ------------------------------------------[[ Audio Analysis ]]------------------------------------------
+audioAnalysisQueue.process(async (job) => {
+  const { filePath, bpmRange } = job.data;
+  const [minBpm, maxBpm] = bpmRange.split('-').map(Number);
+
+  try {
+    await job.progress(25);
+    const { stdout: bpmOutput } = await execAsync(
+      `python3 python/scripts/bpm_analyzer.py ${filePath} ${minBpm} ${maxBpm}`
+    );
+
+    await job.progress(50);
+    const { stdout: keyOutput } = await execAsync(
+      `python3 python/scripts/key_analyzer.py ${filePath}`
+    );
+
+    await job.progress(75);
+    const results = {
+      bpm: JSON.parse(bpmOutput).bpm,
+      key: JSON.parse(keyOutput).key
+    };
+
+    fs.unlinkSync(filePath);
+    await job.progress(100);
+    
+    return results;
+  } catch (error) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    throw error;
+  }
 });

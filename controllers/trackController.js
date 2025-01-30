@@ -1,17 +1,34 @@
 import { queryToDatabase } from '../utils/queryUtils.js';
-import { generateSasToken } from '../utils/azureBlob.js';
 import NodeCache from 'node-cache';
-import { getBlobPathnameFromUrl, deleteBlob } from '../utils/azureBlob.js';
-
+import { s3Service } from '../services/s3Service.js';
 const tokenCache = new NodeCache({ stdTTL: 300 }); // Cache for 5 minutes
 
 
-// Create a new track
+// Update track on database
+export async function updateTrackOnDatabase(trackId, properties) {
+  // Construct the SET clause of the SQL query based on the properties of the object
+  const setClause = Object.keys(properties)
+    .map((key, index) => `${key} = $${index + 1}`)
+    .join(', ');
+  // Create the values array for the query
+  const values = [...Object.values(properties), trackId];
+  // Construct the SQL query with dynamic SET clause
+  const query = `UPDATE tracks SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $${values.length} RETURNING *`;
 
+  try {
+    const result = await queryToDatabase(query, values);
+    return result.rows[0];
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+// Create a new track
 export async function uploadTrackToDatabase(trackData) {
   const query = `
-    INSERT INTO tracks (name, artist, description, is_private, category, genre, mood, length, bpm, image_url, creator_id, sound_type)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    INSERT INTO tracks (name, artist, description, is_private, category, genre, mood, length, bpm, image_url, creator_id, sound_type, url)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     RETURNING *
   `;
   const values = [
@@ -27,6 +44,7 @@ export async function uploadTrackToDatabase(trackData) {
     trackData.image_url,
     trackData.creator_id,
     trackData.sound_type,
+    trackData.url,
   ];
   try {
     const result = await queryToDatabase(query, values);
@@ -70,23 +88,30 @@ export async function getTrackUrl(trackId) {
   }
 }
 
+// authorize the track for playback
 export async function authorizeTrackUrl(trackUrl) {
   try {
     const cacheKey = `track-${trackUrl}`;
     let authorizedUrl = tokenCache.get(cacheKey);
 
     if (!authorizedUrl) {
-      const urlParts = trackUrl.split("/");
-      const containerName = urlParts[3]; // Assuming the container name is the 4th part of the URL
-      const blobName = urlParts.slice(4).join("/"); // The rest is the blob name
-
-      authorizedUrl = await generateSasToken(containerName, blobName);
-      tokenCache.set(cacheKey, authorizedUrl);
+      // Extract the key from the S3 URL
+      // Example URL format: https://bucket-name.s3.amazonaws.com/tracks/user-id/filename
+      const urlObj = new URL(trackUrl);
+      const key = urlObj.pathname.substring(1); // Remove leading slash
+      
+      // Generate a signed URL using the S3 service
+      authorizedUrl = await s3Service.getTrackPlaybackUrl(key, 3600); // 1 hour expiration
+      
+      // Cache the authorized URL
+      tokenCache.set(cacheKey, authorizedUrl, 3300); // Cache for 55 minutes
     }
 
+    console.log('Authorized track URL:', authorizedUrl);
     return authorizedUrl;
   } catch (error) {
-    throw error;
+    console.error('Error authorizing track URL:', error);
+    throw new Error(`Failed to authorize track URL: ${error.message}`);
   }
 }
 
@@ -138,24 +163,20 @@ export async function deleteTrackFromDatabase(trackId) {
   }
 }
 
-// Delete a track (Database and Blobs) by ID
+// Delete a track (Database and s3) by ID
 export async function deleteTrack(trackId) {
   const track = await getTrack(trackId);
   if (!track) {
     throw new Error('Track not found');
   }
   try {
-    // Extract the container name and blob name from the URL for the track
-    const { containerName, blobPath } = getBlobPathnameFromUrl(track.url);
-    // Delete the blob from Azure Blob Storage
-    await deleteBlob(containerName, blobPath);
+    // Delete the track file from S3
+    await s3Service.deleteFile(s3Service.getKeyFromPublicUrl(track.url))
 
-    // If image_url is not null, delete the image blob as well
+    // Delete the cover image from S3
     if (track.image_url) {
-      const { containerName: imageContainerName, blobPath: imageBlobPath } = getBlobPathnameFromUrl(track.image_url);
-      await deleteBlob(imageContainerName, imageBlobPath);
+      await s3Service.deleteFile(s3Service.getKeyFromPublicUrl(track.image_url));
     }
-
     // Delete the track from the database
     return await deleteTrackFromDatabase(trackId);
   } catch (error) {

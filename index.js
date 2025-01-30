@@ -6,7 +6,7 @@ dotenv.config();
 
 // Initialize environment before other imports
 import { initializeEnvironment } from "./utils/loadEnv.js";
-const fallbackPorts = [8080, 8081, 8082, 3000];
+const fallbackPorts = [process.env.PORT, 8081, 8082, 3000];
 
 async function startServer() {
   const http = (await import("http")).default;
@@ -75,10 +75,10 @@ async function startServer() {
     const { default: enumRoutes } = await import("./routes/enumRoutes.js");
     const { default: audioRoutes } = await import("./routes/audioRoutes.js");
     const { default: publicRoutes } = await import("./routes/publicRoutes.js");
+    const { default: awsRoutes } = await import("./routes/awsRoutes.js");
+    const { default: uploadRoutes } = await import("./routes/uploadRoutes.js");
     const { sendTestEmail } = await import("./utils/emailUtils.js");
-    const { audioQueue, cleanupQueue } = await import(
-      "./services/audioServices.js"
-    );
+    const { audioQueue, cleanupQueue } = await import("./queue/audioQueue.js");
     const { errorHandler } = await import("./middlewares/errorHandler.js");
 
     // Rate limiter
@@ -135,6 +135,8 @@ async function startServer() {
     app.use("/api/otp", otpRoutes);
     app.use("/api/enums", enumRoutes);
     app.use("/api/audio", audioRoutes);
+    app.use("/api/aws", awsRoutes);
+    app.use("/api/upload", uploadRoutes);
 
     // Health check for load balancer
     app.get("/health", (req, res) => {

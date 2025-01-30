@@ -2,7 +2,7 @@ import fs from 'fs/promises'
 import path from "path";
 import os from "os";
 
-export const cleanupFiles = async (files) => {
+export const cleanupFiles = async (files=[]) => {
     if (!files) return;
     
     const filesToDelete = Array.isArray(files) ? files : [files];

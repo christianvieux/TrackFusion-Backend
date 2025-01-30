@@ -15,6 +15,17 @@ export async function addUserToDatabase(username, email, password, profile_pictu
   }
 }
 
+export async function updateUserOnDatabase(userId, properties) {
+  const query = `UPDATE users SET ${Object.keys(properties).map((key, index) => `${key} = $${index + 2}`).join(', ')} WHERE id = $1 RETURNING *`;
+  const values = [userId, ...Object.values(properties)];
+  try {
+    const result = await queryToDatabase(query, values);
+    return result.rows[0];
+  } catch (error) {
+    throw error;
+  }
+}
+
 function handleError(error) {
   // Custom error handling for specific error messages
   if (error.message === "Please wait before requesting a new verification code.") {

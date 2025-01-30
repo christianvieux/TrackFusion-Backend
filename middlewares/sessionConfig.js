@@ -7,13 +7,12 @@ export default {
   resave: false,
   saveUninitialized: false,
   name: 'sessionId',
-  proxy: true,
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    maxAge: 24 * 60 * 60 * 1000, // Increase to 24 hours
+    maxAge: 60 * 60000,
     path: '/',
-    domain: process.env.DOMAIN || undefined
+    domain: process.env.NODE_ENV === 'production' ? process.env.DOMAIN : undefined
   },
 };

@@ -6,33 +6,13 @@ import os from "os";
 import multer from "multer";
 import Joi from "joi";
 import { spawn } from "child_process";
-import { convertAudioService } from "../services/audioServices.js";
 import dotenv from 'dotenv'; dotenv.config();  // Load environment variables from .env file
-import { audioQueue } from '../services/audioQueueService.js';
+import { audioQueue } from '../queue/audioQueue.js';
 
 
 const upload = multer({ dest: os.tmpdir() });
 const allowedImageTypes = process.env.ALLOWED_IMAGE_TYPES.split(',');
 
-
-// Method to convert a URL to an audio file
-export const convertUrlToAudio = async (req, res) => {
-  // Define a schema for validation
-  const urlToAudioSchema = Joi.object({
-    url: Joi.string().uri().required(),  // URL must be a valid URI and is required
-    format: Joi.string().valid("mp3", "wav", "m4a", "aac").default("mp3"),  // Only common/popular formats
-  });
-  const { error, value } = urlToAudioSchema.validate(req.body);
-  if (error) return res.status(400).send({ error: error.details[0].message });
-
-  try {
-    await convertAudioService(value, res); // Stream via service
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ error: err.message });
-  }
-};
 
 // Method to analyze the BPM and key of an audio file
 export const analyzeAudio = async (req, res) => {

@@ -7,7 +7,6 @@ dotenv.config(); // Load environment variables from .env file
 import { getUser, getUserInfo, getUserById } from "../controllers/userController.js";
 import { sendPasswordResetCodeEmail } from "../utils/emailUtils.js";
 import { hashPassword } from "../utils/passwordUtils.js";
-import { updateUserProfilePicture as updateUserProfilePictureInAzure } from "../utils/azureBlob.js";
 import bcrypt from "bcrypt";
 import os from "os";
 import multer from "multer";
@@ -272,45 +271,6 @@ export async function updateUserProfilePictureInDatabase(userId, profilePictureU
     throw new Error('Database update failed');
   }
 }
-
-export async function updateProfilePicture(req, res) {
-  const userId = req.session.user?.id;
-
-  // Validate file upload
-  if (!req.file) {
-    return res.status(400).json({ error: "No profile picture uploaded" });
-  }
-
-  try {
-    // Upload new profile picture to Azure Blob Storage
-    const newProfilePictureUrl = await updateUserProfilePictureInAzure(
-      req.file,
-      userId,
-      { source: "user_upload" }
-    );
-
-    // Update user's profile picture URL in the database
-    await updateUserProfilePictureInDatabase(userId, newProfilePictureUrl);
-
-    return res
-      .status(200)
-      .json({ url: newProfilePictureUrl, message: "Profile picture updated successfully" });
-  } catch (error) {
-    console.error("Error updating profile picture:", error);
-    return res.status(500).json({ error: "Failed to update profile picture" });
-  } finally {
-    // Clean up temporary file
-    if (req.file && req.file.path) {
-      try {
-        await fs.unlink(req.file.path); // Ensure cleanup happens asynchronously
-        // console.log("Temporary file deleted:", req.file.path);
-      } catch (err) {
-        console.error("Failed to delete temporary file:", err);
-      }
-    }
-  }
-}
-
 
 export async function updatePassword(req, res) {
   const { currentPassword, newPassword } = req.body;

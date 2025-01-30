@@ -2,13 +2,12 @@ import express from "express";
 import Queue from "bull";
 import path from "path";
 import { uploadAudioSingle, checkAudioFileDuration, handleAudioUploadErrors } from "../middlewares/audioUploadMiddleware.js";
-import { convertUrlToAudio, analyzeAudio, getAnalysisStatus } from '../controllers/audioController.js';
+import { analyzeAudio, getAnalysisStatus } from '../controllers/audioController.js';
 
 
 const router = express.Router();
 const audioQueue = new Queue("audio conversion", "redis://127.0.0.1:6379");
 
-router.post("/convert-url", convertUrlToAudio);
 router.post("/analyze", uploadAudioSingle, checkAudioFileDuration, handleAudioUploadErrors, analyzeAudio);
 
 
