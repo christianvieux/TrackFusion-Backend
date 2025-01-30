@@ -15,4 +15,4 @@ yarn-debug.log*
 yarn-error.log*
 
 # Python
-python/venv/
+venv/
