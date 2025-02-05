@@ -1,47 +1,40 @@
-# DockerFile
+FROM node:18-slim
 
-# Use an official Node.js runtime as a parent image
-FROM node:18-alpine
-
-# Set the working directory inside the container
 WORKDIR /usr/src/app
 
-# Install system dependencies
-RUN apk update && apk upgrade && \
-    apk add --no-cache \
-    python3 \
-    bash \
-    redis \
-    postgresql-client
+# Install system dependencies and create Python virtual environment
+RUN apt-get update && apt-get install -y \
+    python3-full \
+    python3-pip \
+    python3-venv \
+    redis-server \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/venv
 
-# Copy package files first for better caching
+# Activate virtual environment and install Python packages
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY package*.json ./
-
-# Install Node.js dependencies
 RUN npm ci --only=production
 
-# Create required directories for file uploads
-RUN mkdir -p uploads/temp
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
+RUN mkdir -p uploads/temp
 COPY . .
 
-# Add healthcheck for Redis
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD redis-cli ping || exit 1
 
-# Expose the port the app runs on
 EXPOSE 8080
 
-# Create a startup script
 RUN printf '#!/bin/sh\n\
+source /opt/venv/bin/activate\n\
 redis-server --daemonize yes\n\
 sleep 2\n\
 npm start\n' > /usr/src/app/docker-entrypoint.sh && \
     chmod +x /usr/src/app/docker-entrypoint.sh
 
-# Verify script exists
-RUN ls -la /usr/src/app/docker-entrypoint.sh
-
-# Set the entry point
-ENTRYPOINT ["/bin/sh", "/usr/src/app/docker-entrypoint.sh"]
+# Change the entrypoint to use bash instead of sh
+ENTRYPOINT ["/bin/bash", "/usr/src/app/docker-entrypoint.sh"]

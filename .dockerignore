@@ -1,5 +1,6 @@
 # .dockerignore
 node_modules
+venv
 npm-debug.log
 .env
 .git
