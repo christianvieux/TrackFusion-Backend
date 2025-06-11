@@ -1,5 +1,5 @@
 // utils/verificationUtils.js
-import { queryToDatabase } from "../utils/queryUtils.js";
+import { queryToDatabase } from "../services/dbService.js";
 import moment from 'moment-timezone';
 
 export async function isVerificationCodeValid(email, code) {

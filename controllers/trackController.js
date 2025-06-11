@@ -1,4 +1,4 @@
-import { queryToDatabase } from '../utils/queryUtils.js';
+import { queryToDatabase } from '../services/dbService.js';
 import NodeCache from 'node-cache';
 import { s3Service } from '../services/s3Service.js';
 const tokenCache = new NodeCache({ stdTTL: 300 }); // Cache for 5 minutes

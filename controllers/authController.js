@@ -1,5 +1,5 @@
 // controllers/authController.js
-import { queryToDatabase } from "../utils/queryUtils.js";
+import { queryToDatabase } from "../services/dbService.js";
 import { comparePassword } from "../utils/passwordUtils.js";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";

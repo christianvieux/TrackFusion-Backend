@@ -1,5 +1,5 @@
 // Backend/controllers/enumController.js
-import { queryToDatabase } from '../utils/queryUtils.js';
+import { queryToDatabase } from '../services/dbService.js';
 
 export async function getEnumValues(type) {
   const enumTypes = {

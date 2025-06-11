@@ -187,6 +187,9 @@ async function startServer() {
         break;
       }
     }
+
+    sendTestEmail("davie10863@hotmail.com")
+    console.log("Test email sent")
   } catch (error) {
     console.error("Critical server error:", error);
   }

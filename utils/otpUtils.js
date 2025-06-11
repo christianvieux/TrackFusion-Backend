@@ -1,6 +1,6 @@
-// Backend/utils/otpUtils.js
+// utils/otpUtils.js
 import crypto from 'crypto';
-import { queryToDatabase } from './queryUtils.js';
+import { queryToDatabase } from '../services/dbService.js';
 import { sendOTPCodeToEmail } from './emailUtils.js';
 import moment from 'moment-timezone';
 

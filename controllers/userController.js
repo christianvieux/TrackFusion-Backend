@@ -1,6 +1,6 @@
 // controllers/userController.js
 import { hashPassword } from '../utils/passwordUtils.js';
-import { queryToDatabase } from '../utils/queryUtils.js';
+import { queryToDatabase } from '../services/dbService.js';
 import { isEmailValid } from '../utils/emailUtils.js';
 
 export async function addUserToDatabase(username, email, password, profile_picture_url = null) {

@@ -1,93 +1,226 @@
-# TrackFusion Backend
+# TrackFusionWeb - Backend
 
-A Node.js backend for TrackFusion, a web application that lets users discover and share music. This project demonstrates fundamental web development concepts including server setup, routing, and database operations.
+This is the **server** part of Trackfusionweb, a web application for music sharing. This API handles all the important tasks like storing user information, managing music details, and processing requests from the website. While users interact with the nice-looking website interface, this server does all the heavy lifting by talking to the database and ensuring everything works smoothly.
 
-## About This Project
+## What it Does
 
-I built this backend as part of my journey learning web development. It handles basic music platform operations like user management and music track information storage. The project showcases my understanding of:
+**Key Features:**
 
-- Building a REST API with Express.js
-- Working with databases using PostgreSQL
-- Implementing user authentication
-- Writing clean, maintainable code
-- Following MVC (Model-View-Controller) architecture
+- **User Management**: sign up, login, profiles
+- **Music Management**: uploads and storage
+- **Security**: email verification
+- **Interaction**: track commenting
+- ~~**Playlist System**: creation and sharing~~
+- ~~**Search Engine**: song search and discovery~~
+- ~~**Social Features**: user following system~~
 
 ## Technology Stack
 
-- Node.js
-- Express.js
-- PostgreSQL
-- JWT for authentication
-
-## Features
-
-- User registration and login
-- Music track information storage
-- Basic user profile management
-- Simple search functionality
+- **Node.js**: Server runtime environment
+- **Express.js**: Web application framework
+- **PostgreSQL**: Relational database
+- **Redis**: Session management and caching
+- **AWS Services**:
+  - **S3**: Cloud storage for audio files
+  - **IAM**: Access management
+  - ~~**Secrets Manager**: Secure configuration~~
+- **JWT**: Authentication and authorization
+- ~~**Mailgun**: Email service for notifications~~
 
 ## Prerequisites
-- Node.js >= 16.x
-- PostgreSQL >= 14.x
+
+**Required Software:**
+
+- **Node.js** >= 16.x
+- **PostgreSQL** >= 14.x
+- **AWS Account**
+
+**Required Knowledge:**
+
+- **Backend Development**: Node.js and Express
+- **Database**: SQL and database management
+- **Cloud Services**: AWS fundamentals (S3, IAM)
 
 ## Project Setup
 
-1. **Clone the Repository**
+> 🚀 **Before You Dive In**:
+>
+> This backend needs a few technical services to work its magic (AWS for cloud storage, PostgreSQL for data, and Redis for speed). Think of it like building IKEA furniture - you'll need the right tools and a bit of patience. And just like that one IKEA shelf that made you question your life choices, the setup might make you scratch your head a few times. So you've been warned :P
+
+### 1. AWS Configuration
+
+- > **Note**: please keep everything you create in the same region. Otherwise you're going to run into some issues.
+
+1. **Create an IAM User**
+
+   - Log into AWS Console
+   - Go to IAM Service
+   - Create a new user with programmatic access
+   - Attach these policies:
+     - `AmazonS3FullAccess`
+     - `SecretsManagerReadWrite`
+     - Create and Save the **Access Key ID** and **Secret Access Key**
+
+2. **Create S3 Bucket**
+   - Create a new S3 bucket for storing audio files
+   - Enable appropriate CORS settings
+   - Note down the bucket name
+
+### 2. Database Setup
+
+The project uses PostgreSQL for data storage:
+
+1. **Install PostgreSQL** (≥ 14.x)
+2. **Create Database** (in this example i'm using 'trackfusionweb_db' )
+   ```sql
+   CREATE DATABASE trackfusionweb_db;
+   ```
+3. **Initialize Your Database with important Data**
+
+   > The database sql file should is be located in this project folder called `init_database.sql`.
+
    ```bash
-   git clone https://github.com/christianvieux/TrackFusion-Backend.git
-   cd trackfusion-backend
+   # You can do this two ways:
+
+   # 1. Execute the SQL schema using psql. Replace 'your_username' with your PostgreSQL username
+      psql -U your_username -d trackfusionweb_db -f init_database.sql
+
+   # 2. Or using pgAdmin Open pgAdmin > Select Database > Query Tool > Open init_database.sql > Execute
    ```
 
-2. **Install Dependencies**
-   ```bash
-   npm install
-   ```
+### 3. Environment Configuration
 
-3. **Set Up Environment Variables**
-   I've included a `.env.example` file to help you get started with the required environment variables. Simply copy this file and rename it to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-   Then open the `.env` file and replace the placeholder values with your actual configuration:
-   ```
-   PORT=3000
-   DB_CONNECTION=your_database_connection_string
-   JWT_SECRET=your_secret_key
-   ```
-   The .env.example file serves as a template and helps other developers understand which environment variables are needed to run the project.
+> **Note:** Keep the `NODE_ENV` value as 'development'. Do not use anything else.
 
-4. **Start the Server**
+Create your `.env` file with these configurations (examples shown):
+
+```env
+# Environment
+NODE_ENV=development
+
+# AWS Configuration
+AWS_REGION=your-region                # e.g., us-east-1
+AWS_ACCESS_KEY_ID=your-access-key     # From IAM user
+AWS_SECRET_ACCESS_KEY=your-secret-key # From IAM user
+AWS_S3_BUCKET=your-bucket-name        # Your S3 bucket name
+
+# Security
+CORS_ALLOWED_ORIGINS="http://localhost:3001,http://localhost:3000"
+SESSION_SECRET=your-long-random-string
+JWT_SECRET=another-random-string
+JWT_SECRET_PASSWORD_RESET=different-random-string
+
+# Database
+DATABASE_URL="postgres://username:password@localhost:5432/trackfusionweb_db"
+
+# Server
+PORT=3000
+DOMAIN=localhost
+
+# Email (Optional - for notifications)
+MAILGUN_API_KEY=your-mailgun-key
+MAILGUN_DOMAIN=your-domain
+MAILGUN_FROM_EMAIL="Your App <noreply@yourdomain.com>"
+
+# Media Settings
+AUDIO_MAX_LENGTH=900         # 15 minutes
+AUDIO_MAX_FILE_SIZE=300      # 300 MB
+IMAGE_MAX_FILE_SIZE=50       # 50 MB
+
+# File Type Restrictions
+ALLOWED_AUDIO_TYPES=audio/mp3,audio/wav,audio/mpeg,audio/ogg
+ALLOWED_IMAGE_TYPES=image/jpeg,image/png,image/heic
+```
+
+### 4. Install Dependencies
+
+```bash
+npm install
+```
+### 5. Redis Setup
+   1. **Install Redis**
+      ```bash
+      sudo apt update
+      sudo apt install redis-server
+      ```
+
+   2. **Start Redis**
+      ```bash
+      sudo systemctl start redis-server
+      ```
+
+   3. **Verify Installation**
+      ```bash
+      redis-cli ping
+      ```
+      If you see `PONG`, Redis is running correctly.
+
+### 6. Start The Server
+
    ```bash
    npm start
    ```
 
-## Database Structure
+### 7. Verify Setup
 
-The project uses a PostgreSQL database with the following main tables:
+Check this endpoint to verify your setup:
 
-- Users: Stores user information
-- Tracks: Stores music track details
-- Playlists: Manages user playlist data
+- Health check: `http://localhost:3000/api/health`
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. Verify all environment variables are set correctly
+2. Ensure PostgreSQL is running and accessible
+3. Confirm Redis server is active
+4. Check AWS credentials and permissions
+5. Verify network connectivity and CORS settings
+6. Light a candle, draw a circle with chalk, and chant "npm install" three times (results may vary)
+
+> **Just know:** This wasn't built with public usage in mind. If none of these steps work and you really want to get this working, just shoot me an email at christianvieux.dev@gmail.com. I usually respond quickly and can help sort things out.
 
 ## API Endpoints
 
-### User Routes
-- POST /api/users/register - Create new user account
-- POST /api/users/login - User login
-- GET /api/users/profile - Get user profile
+### Authentication Routes
 
-### Music Routes
-- GET /api/tracks - Get all tracks
-- GET /api/tracks/:id - Get specific track
-- POST /api/tracks - Add new track
-- GET /api/playlists - Get user playlists
+- POST `/api/auth/register` - Create new account
+- POST `/api/auth/login` - User login
+- POST `/api/auth/logout` - User logout
+- GET `/api/auth/verify-email/:token` - Verify email address
+
+### User Routes
+
+- GET `/api/users/me` - Get current user profile
+- GET `/api/users/:id` - Get user by ID
+- PUT `/api/users/me` - Update current user
+- GET `/api/users/:id/tracks` - Get user's public tracks
+- GET `/api/users/:id/favorites` - Get user's favorite tracks
+
+### Track Routes
+
+- GET `/api/tracks` - Get all tracks
+- GET `/api/tracks/:id` - Get track by ID
+- POST `/api/tracks` - Upload new track
+- PUT `/api/tracks/:id` - Update track
+- DELETE `/api/tracks/:id` - Delete track
+- POST `/api/tracks/:id/like` - Like/unlike track
+- POST `/api/tracks/:id/comments` - Add comment
+
+
+### Upload Routes
+
+- POST `/api/upload/track` - Upload track file
+- GET `/api/upload/track-status/:jobId` - Check upload status
+
+### Health Check
+
+- GET `/api/health` - API health status
 
 ## Contact
 
 Feel free to reach out if you have any questions about my project:
+
 - Email: christianvieux.dev@gmail.com
 - LinkedIn: https://www.linkedin.com/in/christian-vieux-dev/
 - GitHub: https://github.com/christianvieux
-
----
-This project was created as part of my web development portfolio to demonstrate my backend development skills. While it's still a work in progress, it shows my understanding of fundamental web development concepts and my ability to create functional web applications.

@@ -1,4 +1,4 @@
-// Backend/controllers/otpController.js
+// controllers/otpController.js
 import {
   generateOtpCode,
   isOtpCodeValid,
