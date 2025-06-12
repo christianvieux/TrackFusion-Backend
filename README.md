@@ -61,7 +61,7 @@ This is the **server** part of Trackfusionweb, a web application for music shari
    - Then create an **Access Key** for that user you just created. Save the **Access Key ID** and **Secret Access Key**
 
 2. **Create S3 Bucket**
-   - Create a new S3 bucket for storing audio files
+   - Create a new S3 bucket for storing audio and image files
    - Enable CORS with the following settings:
 
      ```json
@@ -76,6 +76,24 @@ This is the **server** part of Trackfusionweb, a web application for music shari
      ]
      ```
 
+   - Set the following bucket policy to allow public access to uploaded files. Replace `your-bucket-name` with your actual bucket name:
+
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [
+         {
+           "Sid": "AllowPublicRead",
+           "Effect": "Allow",
+           "Principal": "*",
+           "Action": "s3:GetObject",
+           "Resource": "arn:aws:s3:::your-bucket-name/*"
+         }
+       ]
+     }
+     ```
+
+   - This is **required** so the frontend can access uploaded files. If needed, you can restrict access later using signed URLs or tighter policies.
    - Note down the bucket name for your environment config
 
 ### 2. Database Setup
