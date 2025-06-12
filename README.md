@@ -48,8 +48,7 @@ This is the **server** part of Trackfusionweb, a web application for music shari
 > This backend needs a few technical services to work its magic (AWS for cloud storage, PostgreSQL for data, and Redis for speed). Think of it like building IKEA furniture - you'll need the right tools and a bit of patience. And just like that one IKEA shelf that made you question your life choices, the setup might make you scratch your head a few times. So you've been warned :P
 
 ### 1. AWS Configuration
-
-- > **Note**: please keep everything you create in the same region. Otherwise you're going to run into some issues.
+> **Note**: please keep everything you create in the same region. Otherwise you're going to run into some issues.
 
 1. **Create an IAM User**
 
@@ -63,8 +62,21 @@ This is the **server** part of Trackfusionweb, a web application for music shari
 
 2. **Create S3 Bucket**
    - Create a new S3 bucket for storing audio files
-   - Enable appropriate CORS settings
-   - Note down the bucket name
+   - Enable CORS with the following settings:
+
+     ```json
+     [
+       {
+         "AllowedOrigins": ["https://your-site.com"],
+         "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+         "AllowedHeaders": ["*"],
+         "ExposeHeaders": ["ETag"],
+         "MaxAgeSeconds": 3000
+       }
+     ]
+     ```
+
+   - Note down the bucket name for your environment config
 
 ### 2. Database Setup
 
@@ -115,6 +127,23 @@ This project uses **PostgreSQL (v14 or later)** as its primary database.
       sudo -u postgres psql -d trackfusionweb_db -f init_database.sql
 
    # 2. Or using pgAdmin by opening pgAdmin > Select Database > Query Tool > Open init_database.sql > Execute
+   ```
+5. **Grant permissions to the application user**
+
+   Run this block to ensure `trackfusion_user` has full access:
+
+   ```bash
+   sudo -u postgres psql -d $DB_NAME <<'EOF'
+   -- Grant full access to all tables
+   GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO trackfusion_user;
+
+   -- Grant full access to all sequences (for SERIAL inserts)
+   GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO trackfusion_user;
+
+   -- Ensure future tables and sequences have correct privileges
+   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO trackfusion_user;
+   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO trackfusion_user;
+   EOF
    ```
 
 #### 🌐 Optional: Remote Access (e.g. via pgAdmin)
