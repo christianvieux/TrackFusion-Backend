@@ -117,6 +117,69 @@ This project uses **PostgreSQL (v14 or later)** as its primary database.
    # 2. Or using pgAdmin by opening pgAdmin > Select Database > Query Tool > Open init_database.sql > Execute
    ```
 
+#### 🌐 Optional: Remote Access (e.g. via pgAdmin)
+
+> Only do this if you need to access PostgreSQL remotely (e.g. from pgAdmin on your local machine).
+
+1. **Check PostgreSQL version**  
+   Run this to get your version (e.g. 14, 15, etc.):
+
+   ```bash
+   psql --version
+    ````
+
+2. **Allow PostgreSQL to listen on all addresses**
+   Edit `postgresql.conf`:
+
+   ```bash
+   sudo nano /etc/postgresql/<version>/main/postgresql.conf
+   ```
+
+   Find and update:
+
+   ```conf
+   #listen_addresses = 'localhost'
+   ```
+
+   To:
+
+   ```conf
+   listen_addresses = '*'
+   ```
+
+3. **Allow remote connections in `pg_hba.conf`**
+   Edit:
+
+   ```bash
+   sudo nano /etc/postgresql/<version>/main/pg_hba.conf
+   ```
+
+   Add this at the bottom:
+
+   ```conf
+   host    all             all             0.0.0.0/0            md5
+   ```
+
+4. **Restart PostgreSQL**:
+
+   ```bash
+   sudo systemctl restart postgresql
+   ```
+
+5. **Update AWS Security Group**
+   Allow inbound traffic on port **5432** from your IP (`your.ip.address/32`).
+
+6. **Connect in pgAdmin**:
+
+   * **Host**: your EC2 public IP or DNS
+   * **Port**: 5432
+   * **User**: `trackfusion_user`
+   * **Password**: your set password
+   * **Database**: `trackfusionweb_db`
+
+> ⚠️ **Important:** Never leave port 5432 open to the world (`0.0.0.0/0`). Use IP whitelisting or SSH tunneling for security.
+
+
 ### 3. Environment Configuration
 
 > **Note:** Keep the `NODE_ENV` value as 'development'. Do not use anything else.
