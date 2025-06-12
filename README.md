@@ -59,7 +59,7 @@ This is the **server** part of Trackfusionweb, a web application for music shari
    - Attach these policies:
      - `AmazonS3FullAccess`
      - `SecretsManagerReadWrite`
-     - Create and Save the **Access Key ID** and **Secret Access Key**
+   - Then create an **Access Key** for that user you just created. Save the **Access Key ID** and **Secret Access Key**
 
 2. **Create S3 Bucket**
    - Create a new S3 bucket for storing audio files
