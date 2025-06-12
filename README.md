@@ -68,24 +68,53 @@ This is the **server** part of Trackfusionweb, a web application for music shari
 
 ### 2. Database Setup
 
-The project uses PostgreSQL for data storage:
+This project uses **PostgreSQL (v14 or later)** as its primary database.
 
-1. **Install PostgreSQL** (≥ 14.x)
-2. **Create Database** (in this example i'm using 'trackfusionweb_db' )
-   ```sql
-   CREATE DATABASE trackfusionweb_db;
-   ```
-3. **Initialize Your Database with important Data**
+#### Step-by-step setup (Linux)
 
-   > The database sql file should is be located in this project folder called `init_database.sql`.
+1. **Install PostgreSQL**  (If you haven't installed it already):
 
    ```bash
-   # You can do this two ways:
+   sudo apt install postgresql
+    ````
+2. **Switch to the PostgreSQL user**
+   All setup commands should be run as the `postgres` system user:
 
-   # 1. Execute the SQL schema using psql. Replace 'your_username' with your PostgreSQL username
-      psql -U your_username -d trackfusionweb_db -f init_database.sql
+   ```bash
+   sudo -u postgres psql
+   ```
+   
+3. **Create a database user and database**
+   Inside the `psql` shell, run:
 
-   # 2. Or using pgAdmin Open pgAdmin > Select Database > Query Tool > Open init_database.sql > Execute
+   ```sql
+   CREATE USER trackfusion_user WITH PASSWORD 'secure_password'; -- change to a secure password
+   CREATE DATABASE trackfusionweb_db OWNER trackfusion_user;
+   \q
+   ```
+
+   > Alternatively, run it from your normal shell like this:
+
+   ```bash
+   DB_NAME="trackfusionweb_db"
+   DB_USER="trackfusion_user"
+   DB_PASSWORD="secure_password"  # Replace with a secure password
+
+   sudo -u postgres psql -c "CREATE USER $DB_USER WITH LOGIN PASSWORD '$DB_PASSWORD';"
+   sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;"
+   ```
+   
+4. **Initialize Your Database with important Data**
+
+   > The database sql file should is be located in this project folder called `init_database.sql`.
+   
+   You can run the schema from the included SQL file (`init_database.sql`) in two ways:
+
+   ```bash
+   # 1. Recommended (as postgres user)
+      sudo -u postgres psql -d trackfusionweb_db -f init_database.sql
+
+   # 2. Or using pgAdmin by opening pgAdmin > Select Database > Query Tool > Open init_database.sql > Execute
    ```
 
 ### 3. Environment Configuration
@@ -140,7 +169,6 @@ npm install
 ### 5. Redis Setup
    1. **Install Redis**
       ```bash
-      sudo apt update
       sudo apt install redis-server
       ```
 
