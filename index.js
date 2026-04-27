@@ -109,12 +109,7 @@ async function startServer() {
 
     // Basic cors middleware
     // app.use(cors(corsOptions));
-    app.use(cors({
-      origin: '*',
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'sentry-trace', 'baggage', '*'],
-      credentials: true
-    }));
+    app.use(cors(corsOptions));
 
     // Increase body parser limits
     const size = "1000mb";
