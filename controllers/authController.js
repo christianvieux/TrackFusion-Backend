@@ -12,6 +12,7 @@ import os from "os";
 import multer from "multer";
 import fs from 'fs/promises';  // Use fs.promises for async file handling
 import Joi from 'joi';
+import { clearCookieOptions, tokenCookieOptions } from "../utils/cookieOptions.js";
 const upload = multer({ dest: os.tmpdir() });
 
 function initializeUserSession(req, res, userData) {
@@ -21,11 +22,7 @@ function initializeUserSession(req, res, userData) {
   });
 
   // Set the JWT token in the cookie with security flags
-  res.cookie("token", token, { 
-    httpOnly: true, 
-    // secure: true, 
-    // sameSite: "none"
-   });
+  res.cookie("token", token, tokenCookieOptions);
 
   // Set the user data in the session
   req.session.user = {
@@ -55,11 +52,7 @@ export async function authorizeSession(req, res, userEmail) {
     });
 
     // Set the JWT token in the cookie with security flags
-    res.cookie("token", token, { 
-      httpOnly: true, 
-      // secure: true, 
-      // sameSite: "none"
-    });
+    res.cookie("token", token, tokenCookieOptions);
 
     // Set the user data in the session
     req.session.user = {
@@ -127,8 +120,8 @@ export async function logout(req, res) {
     if (err) {
       return res.status(500).json({ error: "Logout failed" });
     }
-    res.clearCookie("connect.sid"); // Clear the session cookie
-    res.clearCookie("token"); // Clear the JWT cookie
+    res.clearCookie("sessionId", clearCookieOptions); // Clear the session cookie
+    res.clearCookie("token", clearCookieOptions); // Clear the JWT cookie
     return res.status(200).json({ message: "Logout successful" });
   });
 }

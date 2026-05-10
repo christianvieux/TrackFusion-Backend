@@ -35,7 +35,10 @@ const ENV = {
   ?.split(',')
   .map((url) => url.trim())
   .filter(Boolean) || ['http://localhost:8080'],
-  CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS?.split(',') || [],
+  CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS
+    ?.split(',')
+    .map((url) => normalizeUrl(url.trim()))
+    .filter(Boolean) || [],
 };
 
 // Generate allowed origins
