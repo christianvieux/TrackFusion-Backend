@@ -28,7 +28,7 @@ async function startServer() {
             }
           });
       });
-      const apiUrl = `http://localhost:${port}/api`;
+      const apiUrl = `http://localhost:${port}`;
       console.log(
         `🚀 Server successfully started - Listening on port ${port} (0.0.0.0)`
       );
@@ -123,15 +123,15 @@ async function startServer() {
     app.use(bodyParser.raw({ limit: size }));
 
     // Routes
-    app.use("/api/public", publicRoutes);
-    app.use("/api/auth", authRoutes);
-    app.use("/api/users", userRoutes);
-    app.use("/api/tracks", trackRoutes);
-    app.use("/api/otp", otpRoutes);
-    app.use("/api/enums", enumRoutes);
-    app.use("/api/audio", audioRoutes);
-    app.use("/api/aws", awsRoutes);
-    app.use("/api/upload", uploadRoutes);
+    app.use("/public", publicRoutes);
+    app.use("/auth", authRoutes);
+    app.use("/users", userRoutes);
+    app.use("/tracks", trackRoutes);
+    app.use("/otp", otpRoutes);
+    app.use("/enums", enumRoutes);
+    app.use("/audio", audioRoutes);
+    app.use("/aws", awsRoutes);
+    app.use("/upload", uploadRoutes);
 
     // Health check for load balancer
     app.get("/health", (req, res) => {

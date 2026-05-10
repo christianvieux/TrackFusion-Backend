@@ -394,7 +394,7 @@ sudo systemctl reload nginx
 Before testing the public domain, make sure Express works locally on the EC2 instance:
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:3000/health
 ```
 
 Expected result should show the API health status.
@@ -404,7 +404,7 @@ Expected result should show the API health status.
 Before setting up HTTPS, test the public HTTP version:
 
 ```bash
-curl http://your-api-domain.com/api/health
+curl http://your-api-domain.com/health
 ```
 
 This confirms:
@@ -443,7 +443,7 @@ https://your-api-domain.com
 Test it:
 
 ```bash
-curl https://your-api-domain.com/api/health
+curl https://your-api-domain.com/health
 ```
 
 #### Certificate Auto-Renewal
@@ -503,8 +503,8 @@ sudo systemctl reload nginx
 sudo certbot certificates
 sudo certbot renew --dry-run
 systemctl list-timers | grep certbot
-curl http://localhost:3000/api/health
-curl https://your-api-domain.com/api/health
+curl http://localhost:3000/health
+curl https://your-api-domain.com/health
 ```
 
 #### Frontend API URL
@@ -563,13 +563,13 @@ npm start
 Check this endpoint to verify your setup:
 
 ```txt
-http://localhost:3000/api/health
+http://localhost:3000/health
 ```
 
 For production:
 
 ```txt
-https://your-api-domain.com/api/health
+https://your-api-domain.com/health
 ```
 
 ## Troubleshooting
@@ -593,37 +593,37 @@ If you encounter issues:
 
 ### Authentication Routes
 
-* POST `/api/auth/register` - Create new account
-* POST `/api/auth/login` - User login
-* POST `/api/auth/logout` - User logout
-* GET `/api/auth/verify-email/:token` - Verify email address
+* POST `/auth/register` - Create new account
+* POST `/auth/login` - User login
+* POST `/auth/logout` - User logout
+* GET `/auth/verify-email/:token` - Verify email address
 
 ### User Routes
 
-* GET `/api/users/me` - Get current user profile
-* GET `/api/users/:id` - Get user by ID
-* PUT `/api/users/me` - Update current user
-* GET `/api/users/:id/tracks` - Get user's public tracks
-* GET `/api/users/:id/favorites` - Get user's favorite tracks
+* GET `/users/me` - Get current user profile
+* GET `/users/:id` - Get user by ID
+* PUT `/users/me` - Update current user
+* GET `/users/:id/tracks` - Get user's public tracks
+* GET `/users/:id/favorites` - Get user's favorite tracks
 
 ### Track Routes
 
-* GET `/api/tracks` - Get all tracks
-* GET `/api/tracks/:id` - Get track by ID
-* POST `/api/tracks` - Upload new track
-* PUT `/api/tracks/:id` - Update track
-* DELETE `/api/tracks/:id` - Delete track
-* POST `/api/tracks/:id/like` - Like/unlike track
-* POST `/api/tracks/:id/comments` - Add comment
+* GET `/tracks` - Get all tracks
+* GET `/tracks/:id` - Get track by ID
+* POST `/tracks` - Upload new track
+* PUT `/tracks/:id` - Update track
+* DELETE `/tracks/:id` - Delete track
+* POST `/tracks/:id/like` - Like/unlike track
+* POST `/tracks/:id/comments` - Add comment
 
 ### Upload Routes
 
-* POST `/api/upload/track` - Upload track file
-* GET `/api/upload/track-status/:jobId` - Check upload status
+* POST `/upload/track` - Upload track file
+* GET `/upload/track-status/:jobId` - Check upload status
 
 ### Health Check
 
-* GET `/api/health` - API health status
+* GET `/health` - API health status
 
 ## Contact
 
