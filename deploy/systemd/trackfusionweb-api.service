@@ -1,0 +1,27 @@
+[Unit]
+Description=TrackFusionWeb API
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=trackfusion
+Group=trackfusion
+WorkingDirectory=/opt/trackfusion/api
+EnvironmentFile=/etc/trackfusion/api.env
+ExecStart=/usr/local/bin/node /opt/trackfusion/api/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=35
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+RestrictSUIDSGID=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+

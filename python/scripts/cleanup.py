@@ -1,3 +1,4 @@
+# python/scripts/cleanup.py
 import subprocess
 import sys
 

@@ -1,94 +1,138 @@
-//index.js
-import dotenv from 'dotenv'; dotenv.config();
+import dotenv from "dotenv";
+import { initializeEnvironment, validateEnvironment } from "./utils/loadEnv.js";
 
-import express from "express";
-import bodyParser from "body-parser";
-import session from 'express-session';
-import cookieParser from 'cookie-parser';
-import cors from "cors";
-import helmet from 'helmet';
-import http from 'http';
-import rateLimit from 'express-rate-limit';
+dotenv.config();
 
-import { sendTestEmail } from './utils/emailUtils.js';
-import { corsOptions } from './middlewares/corsOptions.js';
-import sessionConfig from './middlewares/sessionConfig.js';
-import authRoutes from './routes/authRoutes.js';
-import userRoutes from './routes/userRoutes.js';
-import trackRoutes from './routes/trackRoutes.js';
-import otpRoutes from './routes/otpRoutes.js';
-import enumRoutes from './routes/enumRoutes.js';
-import audioRoutes from './routes/audioRoutes.js';
-import publicRoutes from './routes/publicRoutes.js'
-import { audioQueue, cleanupQueue } from "./services/audioServices.js";
-import { errorHandler } from './middlewares/errorHandler.js';
+async function startServer() {
+  await initializeEnvironment();
+  const { port } = validateEnvironment();
 
+  const http = (await import("http")).default;
+  const express = (await import("express")).default;
+  const session = (await import("express-session")).default;
+  const cookieParser = (await import("cookie-parser")).default;
+  const cors = (await import("cors")).default;
+  const helmet = (await import("helmet")).default;
+  const { createClient } = await import("redis");
+  const { RedisStore } = await import("connect-redis");
+  const { default: databasePool, verifyDatabaseConnection } = await import("./services/dbService.js");
 
-const app = express();
-const port = process.env.PORT || 3000;
+  await verifyDatabaseConnection();
+  console.log("PostgreSQL connection verified");
 
+  const redisClient = createClient({ url: process.env.REDIS_URL });
+  redisClient.on("error", (error) => {
+    console.error("Redis client error:", error.message);
+  });
+  await redisClient.connect();
+  console.log("Redis connection verified");
 
-// Rate limiter
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false
-});
+  const { corsOptions } = await import("./middlewares/corsOptions.js");
+  const { default: sessionConfig } = await import("./middlewares/sessionConfig.js");
+  const { apiLimiter } = await import("./middlewares/limiterConfig.js");
+  const { default: authRoutes } = await import("./routes/authRoutes.js");
+  const { default: userRoutes } = await import("./routes/userRoutes.js");
+  const { default: trackRoutes } = await import("./routes/trackRoutes.js");
+  const { default: otpRoutes } = await import("./routes/otpRoutes.js");
+  const { default: enumRoutes } = await import("./routes/enumRoutes.js");
+  const { default: audioRoutes } = await import("./routes/audioRoutes.js");
+  const { default: publicRoutes } = await import("./routes/publicRoutes.js");
+  const { default: awsRoutes } = await import("./routes/awsRoutes.js");
+  const { default: uploadRoutes } = await import("./routes/uploadRoutes.js");
+  const { audioQueue, cleanupQueue, audioAnalysisQueue } = await import("./queue/audioQueue.js");
+  const { trackUploadQueue, profilePictureUploadQueue } = await import("./queue/uploadQueue.js");
+  const { errorHandler } = await import("./middlewares/errorHandler.js");
 
-// Secure middleware (order matters)
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
-    },
-  },
-}));
-app.set('trust proxy', 1); // If behind reverse proxy
-app.use(limiter);
-app.use(cookieParser());
-app.use(session(sessionConfig));
+  const app = express();
+  const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "1mb";
 
-// Basic middleware
-app.use(cors(corsOptions));
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+  app.set("trust proxy", process.env.NODE_ENV === "production" ? 1 : false);
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'"],
+          imgSrc: ["'self'", "data:", "blob:"],
+          connectSrc: ["'self'"],
+        },
+      },
+    }),
+  );
+  app.use(cors(corsOptions));
+  app.use(apiLimiter);
+  app.use(cookieParser());
+  app.use(session({
+    ...sessionConfig,
+    store: new RedisStore({
+      client: redisClient,
+      prefix: "trackfusion:session:",
+    }),
+  }));
+  app.use(express.json({ limit: requestBodyLimit }));
+  app.use(express.urlencoded({ limit: requestBodyLimit, extended: true }));
 
-// Routes
-app.use('/api/public', publicRoutes)
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/tracks', trackRoutes);
-app.use('/api/otp', otpRoutes);
-app.use('/api/enums', enumRoutes);
-app.use('/api/audio', audioRoutes);
+  app.use("/public", publicRoutes);
+  app.use("/auth", authRoutes);
+  app.use("/users", userRoutes);
+  app.use("/tracks", trackRoutes);
+  app.use("/otp", otpRoutes);
+  app.use("/enums", enumRoutes);
+  app.use("/audio", audioRoutes);
+  app.use("/aws", awsRoutes);
+  app.use("/upload", uploadRoutes);
 
-// Error handling
-app.use(errorHandler);
+  app.get("/health", (req, res) => {
+    res.status(200).json({ status: "healthy" });
+  });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Gracefully shutting down...');
-  await Promise.all([
-    audioQueue.close(),
-    cleanupQueue.close()
-  ]);
-  process.exit(0);
-});
+  app.use(errorHandler);
 
-// Log unhandled rejections
-process.on('unhandledRejection', (error) => {
-  console.error('Unhandled rejection:', error);
-});
+  const server = http.createServer(app);
+  server.timeout = 120000;
 
-const server = http.createServer(app); // Create an HTTP server
-// Server timeout
-server.timeout = 30000; // 30 seconds
-// Start the server
-server.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, process.env.HOST, resolve);
+  });
+
+  console.log(`TrackFusionWeb API listening on http://${process.env.HOST}:${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV}`);
+
+  let shuttingDown = false;
+  const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received; shutting down gracefully`);
+
+    await new Promise((resolve) => server.close(resolve));
+    const resources = [
+      audioQueue,
+      cleanupQueue,
+      audioAnalysisQueue,
+      trackUploadQueue,
+      profilePictureUploadQueue,
+    ];
+    await Promise.allSettled([
+      ...resources.map((queue) => queue.close()),
+      redisClient.quit(),
+      databasePool.end(),
+    ]);
+    console.log("Shutdown complete");
+  };
+
+  process.once("SIGINT", () => {
+    shutdown("SIGINT").then(() => process.exit(0));
+  });
+  process.once("SIGTERM", () => {
+    shutdown("SIGTERM").then(() => process.exit(0));
+  });
+
+  return { app, server };
+}
+
+startServer().catch((error) => {
+  console.error("Unable to start TrackFusionWeb API:", error);
+  process.exit(1);
 });

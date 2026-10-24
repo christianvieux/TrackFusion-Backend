@@ -1,76 +1,105 @@
 // utils/emailUtils.js
-import fs from 'fs';
-import path from 'path';
-import dns from 'dns';
-import validator from 'validator';
-import sgMail from '@sendgrid/mail';
+
 // env variables
 import dotenv from 'dotenv'; dotenv.config();
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// 
+import { promises as dns } from 'dns';
+import validator from 'validator';
+import disposableEmailDomains from 'disposable-email-domains/index.js';
+import { mailgunService } from "../services/mailgunService.js";
 
-const disposableEmailDomains = JSON.parse(
-  fs.readFileSync(path.resolve('node_modules/disposable-email-domains/index.json'), 'utf8')
-);
-
-const ALLOWED_DOMAINS = [
-  // 'example.com'
-]; // Allowed email domains for production
-const DEVELOPMENT_MODE = true //process.env.NODE_ENV === 'development'; // Set your environment variable accordingly
-
-
-export async function sendOTPCodeToEmail(email, code, purpose) {
-  // const verificationLink = `http://yourdomain.com/verify-email?code=${code}`;
-  const msg = getEmailMessage(email, code, purpose);
-  await sgMail.send(msg);
+function isEnabled(name) {
+  return process.env[name] === "true";
 }
 
 const getEmailMessage = (email, code, purpose) => {
-  switch (purpose) {
-    case 'registration':
-      return {
-        to: email,
-        from: process.env.AUTH_EMAIL_USER,
-        subject: 'Email Verification',
-        text: `Please verify your email by entering the following code: ${code}`,
-      };
-    case 'password_reset':
-      return {
-        to: email,
-        from: process.env.AUTH_EMAIL_USER,
-        subject: 'Password Reset',
-        text: `You can reset your password by entering the following code: ${code}`,
-      };
-    default:
-      throw new Error('Invalid purpose');
-  }
-};
+  const subject = purpose === "registration"
+    ? "Verify your TrackFusionWeb email"
+    : "Reset your TrackFusionWeb password";
 
-export async function sendPasswordResetCodeEmail(email, resetLink) {
-    const msg = {
-      to: email,
-      from: process.env.AUTH_EMAIL_USER,
-      subject: 'Password Reset',
-      text: `You can reset your password by clicking on the following link: ${resetLink}`,
-    };
-  
-    await sgMail.send(msg);
-  }
-
-export async function sendTestEmail(email) {
-  const msg = {
+  const baseMessage = {
     to: email,
-    from: process.env.AUTH_EMAIL_USER,
-    subject: 'Test Email',
-    text: 'This is a test email to verify that the email sending functionality works.',
+    from: process.env.MAILGUN_FROM_EMAIL,
+    subject,
+    template: {
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <header style="margin-bottom: 20px;">
+              <h2 style="color: #333;">TrackFusionWeb</h2>
+            </header>
+            ${purpose === "registration" ? 
+              `<h3>Verify Your Email Address</h3>
+               <p>Thank you for creating a TrackFusionWeb account. Please enter this verification code to complete your registration:</p>`
+              : 
+              `<h3>Reset Your Password</h3>
+               <p>We received a request to reset your password. Please enter this security code to continue:</p>`
+            }
+            <div style="background: #f5f5f5; padding: 15px; margin: 20px 0; text-align: center;">
+              <span style="font-size: 24px; font-weight: bold; color: #4A90E2;">${code}</span>
+            </div>
+            <p>This code will expire in 10 minutes.</p>
+            <p>If you didn't request this, please ignore this email or contact support if you have concerns.</p>
+            <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+            <footer style="color: #666; font-size: 12px;">
+              <p>This is an automated message from TrackFusionWeb. Please do not reply to this email.</p>
+              <p>TrackFusionWeb, [Your Business Address]</p>
+            </footer>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        TrackFusionWeb
+        
+        ${purpose === "registration" ? "Verify Your Email Address" : "Reset Your Password"}
+        
+        Your verification code is: ${code}
+        
+        This code will expire in 10 minutes.
+        
+        If you didn't request this, please ignore this email or contact support if you have concerns.
+        
+        This is an automated message from TrackFusionWeb. Please do not reply to this email.
+      `
+    }
   };
 
-  try {
-    const response = await sgMail.send(msg);
-    console.log("Test email sent", response);
-  } catch (error) {
-    console.error("Error sending test email:", error);
-  }
+  return baseMessage;
+};
+
+export async function sendOTPCodeToEmail(email, code, purpose) {
+  if (!isEnabled("EMAIL_DELIVERY_ENABLED")) return;
+
+  const msg = getEmailMessage(email, code, purpose);
+  await mailgunService.sendEmail(
+    msg.to,
+    msg.subject,
+    msg.template.text,
+    msg.template.html,
+  );
+}
+
+export async function sendPasswordResetCodeEmail(email, resetLink) {
+  if (!isEnabled("EMAIL_DELIVERY_ENABLED")) return;
+
+  await mailgunService.sendEmail(
+    email,
+    "Password Reset",
+    `You can reset your password by clicking on the following link: ${resetLink}`,
+    `
+        <h2>Password Reset</h2>
+        <p>You can reset your password by clicking on the following link:</p>
+        <a href="${resetLink}" style="color: #4A90E2;">${resetLink}</a>
+      `
+  );
+}
+
+export async function sendTestEmail(email) {
+  return mailgunService.sendTestEmail(email);
 }
 
 export async function isEmailValid(email) {
@@ -78,29 +107,28 @@ export async function isEmailValid(email) {
     return { error: "Invalid email format" };
   }
 
-  const domain = email.split('@')[1];
+  const domain = email.split("@")[1];
 
-  if (!DEVELOPMENT_MODE) {
-    if (!ALLOWED_DOMAINS.includes(domain)) {
-      return { error: "Email domain not allowed" };
-    }
+  const allowedDomains = (process.env.EMAIL_ALLOWED_DOMAINS || "")
+    .split(",")
+    .map((allowedDomain) => allowedDomain.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (allowedDomains.length > 0 && !allowedDomains.includes(domain.toLowerCase())) {
+    return { error: "Email domain not allowed" };
   }
 
-  if (disposableEmailDomains.includes(domain)) {
+  if (disposableEmailDomains.includes(domain.toLowerCase())) {
     return { error: "Disposable email addresses are not allowed" };
   }
 
-  try {
-    const isValidDomain = await new Promise((resolve) => {
-      dns.resolveMx(domain, (err, addresses) => {
-        if (err || addresses.length === 0) {
-          return resolve(false);
-        }
-        resolve(true);
-      });
-    });
+  if (!isEnabled("EMAIL_VALIDATE_MX")) {
+    return { error: null };
+  }
 
-    if (!isValidDomain) {
+  try {
+    const addresses = await dns.resolveMx(domain);
+    if (addresses.length === 0) {
       return { error: "Invalid email domain" };
     }
   } catch (error) {

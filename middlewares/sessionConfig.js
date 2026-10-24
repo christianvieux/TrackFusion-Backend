@@ -1,18 +1,13 @@
 // sessionConfig.js
 import dotenv from "dotenv";
+import { sessionCookieOptions } from "../utils/cookieOptions.js";
 dotenv.config();
 
 export default {
-  secret: process.env.SESSION_SECRET || "your-secret-key",
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   name: 'sessionId',
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    maxAge: 60 * 60000,
-    path: '/',
-    domain: process.env.NODE_ENV === 'production' ? process.env.DOMAIN : undefined
-  },
+  proxy: process.env.NODE_ENV === "production",
+  cookie: sessionCookieOptions,
 };

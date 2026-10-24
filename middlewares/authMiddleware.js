@@ -29,8 +29,10 @@ export async function authenticateToken(req, res, next) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Attach the user data to the request for use in subsequent middleware or route handlers
-    req.user = user;
+    // Never make password hashes available to downstream route handlers.
+    const safeUser = { ...user };
+    delete safeUser.password_hash;
+    req.user = safeUser;
     next();
   } catch (error) {
     // Handle specific JWT validation errors

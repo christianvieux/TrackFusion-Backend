@@ -1,12 +1,27 @@
 // controllers/userController.js
 import { hashPassword } from '../utils/passwordUtils.js';
-import { queryToDatabase } from '../utils/queryUtils.js';
+import { queryToDatabase } from '../services/dbService.js';
 import { isEmailValid } from '../utils/emailUtils.js';
 
 export async function addUserToDatabase(username, email, password, profile_picture_url = null) {
   const hashedPassword = await hashPassword(password);
-  const query = `INSERT INTO users (username, email, password_hash, profile_picture_url, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING *`;
+  const query = `
+    INSERT INTO users (username, email, password_hash, profile_picture_url, is_verified, created_at)
+    VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP)
+    RETURNING id, username, email, profile_picture_url, is_verified, created_at, updated_at
+  `;
   const values = [username, email, hashedPassword, profile_picture_url];
+  try {
+    const result = await queryToDatabase(query, values);
+    return result.rows[0];
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function updateUserOnDatabase(userId, properties) {
+  const query = `UPDATE users SET ${Object.keys(properties).map((key, index) => `${key} = $${index + 2}`).join(', ')} WHERE id = $1 RETURNING *`;
+  const values = [userId, ...Object.values(properties)];
   try {
     const result = await queryToDatabase(query, values);
     return result.rows[0];

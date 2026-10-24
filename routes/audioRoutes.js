@@ -1,21 +1,30 @@
 import express from "express";
-import Queue from "bull";
+import Joi from "joi";
 import path from "path";
-import { uploadAudioSingle, checkAudioFileDuration, handleAudioUploadErrors } from "../middlewares/audioUploadMiddleware.js";
-import { convertUrlToAudio, analyzeAudio, getAnalysisStatus } from '../controllers/audioController.js';
-
+import { audioAnalysisQueue, audioQueue } from '../queue/audioQueue.js';
+import { authenticateToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
-const audioQueue = new Queue("audio conversion", "redis://127.0.0.1:6379");
+router.use(authenticateToken);
 
-router.post("/convert-url", convertUrlToAudio);
-router.post("/analyze", uploadAudioSingle, checkAudioFileDuration, handleAudioUploadErrors, analyzeAudio);
+const analyzeAudioSchema = Joi.object({
+  trackUrl: Joi.object({
+    key: Joi.string().required(),
+    uploadUrl: Joi.string().uri().optional(),
+    publicUrl: Joi.string().uri().optional(),
+  }).required(),
+  bpmRange: Joi.string().valid("50-100", "75-150", "100-200").default("50-100"),
+});
+
+function userOwnsJob(job, userId) {
+  return job && String(job.data.userId) === String(userId);
+}
 
 
 router.get("/status/:jobId", async (req, res) => {
   const job = await audioQueue.getJob(req.params.jobId);
 
-  if (!job) {
+  if (!userOwnsJob(job, req.user.id)) {
     return res.status(404).send({ error: "Job not found" });
   }
 
@@ -41,7 +50,7 @@ router.get("/status/:jobId", async (req, res) => {
 router.get("/result/:jobId", async (req, res) => {
   const job = await audioQueue.getJob(req.params.jobId);
 
-  if (!job) {
+  if (!userOwnsJob(job, req.user.id)) {
     return res.status(404).send({ error: "Job not found" });
   }
 
@@ -54,7 +63,7 @@ router.get("/result/:jobId", async (req, res) => {
 router.get('/download/:jobId', async (req, res) => {
   const job = await audioQueue.getJob(req.params.jobId);
 
-  if (!job) {
+  if (!userOwnsJob(job, req.user.id)) {
     return res.status(404).send({ error: 'Job not found' });
   }
 
@@ -70,6 +79,57 @@ router.get('/download/:jobId', async (req, res) => {
     res.status(404).send({ error: 'File not found' });
   }
 });
-router.get('/analysis/status/:jobId', getAnalysisStatus);
+
+// Route to analyze audio
+router.post("/analyze", async (req, res) => {
+  try {
+    const { error, value } = analyzeAudioSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { trackUrl, bpmRange } = value;
+    if (!trackUrl.key.startsWith(`uploads/${req.user.id}/`)) {
+      return res.status(403).json({ error: "Upload key does not belong to this user" });
+    }
+
+    // Add to analysis queue
+    const job = await audioAnalysisQueue.add({
+      userId: req.user.id,
+      trackUrl,
+      bpmRange,
+    });
+
+    res.status(202).json({ 
+      jobId: job.id,
+      message: 'Analysis started' 
+    });
+  } catch (error) {
+    console.error("Error queueing analysis:", error);
+    res.status(500).json({ error: "Failed to start analysis" });
+  }
+});
+
+router.get("/analysis-status/:jobId", async (req, res) => {
+  try {
+    const job = await audioAnalysisQueue.getJob(req.params.jobId);
+    if (!userOwnsJob(job, req.user.id)) {
+      return res.status(404).json({ error: "Analysis job not found" });
+    }
+    const state = await job.getState();
+
+    const response = {
+      id: job.id,
+      state,
+      progress: job._progress,
+      result: job.returnvalue,
+      error: job.failedReason,
+    };
+
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to get status" });
+  }
+});
 
 export default router;
