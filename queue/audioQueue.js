@@ -4,15 +4,17 @@ import { spawn } from "child_process";
 import fs from "fs";
 import Queue from "bull";
 import dotenv from "dotenv";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import util from "util";
 import { s3Service } from "../services/s3Service.js";
 import { cleanupFiles } from "../utils/cleanup.js";
 import { audioService } from "../services/audioService.js";
 
-const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
 dotenv.config();
+
+const pythonExecutable = process.env.PYTHON_EXECUTABLE || "python3";
 
 export const audioQueue = new Queue("audio conversion", process.env.REDIS_URL);
 export const cleanupQueue = new Queue("audio cleanup", process.env.REDIS_URL);
@@ -60,7 +62,7 @@ const processAudioJob = async (job, retryCount = 0, useProxy = true) => {
 
     return new Promise((resolve, reject) => {
       pythonProcess = spawn(
-        "python3",
+        pythonExecutable,
         ["python/scripts/url_to_audio.py", url, format],
         { env }
       );
@@ -266,14 +268,16 @@ audioAnalysisQueue.process(async (job) => {
     // Run BPM analysis
     await job.progress("analyzing_bpm");
     const [minBpm, maxBpm] = bpmRange.split("-").map(Number);
-    const { stdout: bpmOutput } = await execAsync(
-      `python3 python/scripts/bpm_analyzer.py ${filePath} ${minBpm} ${maxBpm}`
+    const { stdout: bpmOutput } = await execFileAsync(
+      pythonExecutable,
+      ["python/scripts/bpm_analyzer.py", filePath, String(minBpm), String(maxBpm)],
     );
 
     // Run key analysis
     await job.progress("analyzing_key");
-    const { stdout: keyOutput } = await execAsync(
-      `python3 python/scripts/key_analyzer.py ${filePath}`
+    const { stdout: keyOutput } = await execFileAsync(
+      pythonExecutable,
+      ["python/scripts/key_analyzer.py", filePath],
     );
 
     // Combine results
