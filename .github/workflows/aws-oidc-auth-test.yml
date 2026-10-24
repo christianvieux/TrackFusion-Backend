@@ -1,0 +1,29 @@
+name: AWS OIDC authentication test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  authenticate:
+    name: Verify AWS identity
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: production
+      deployment: false
+    steps:
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::020457827871:role/TrackFusionWeb-GitHub-Deploy_Role
+          role-session-name: TrackFusionWeb-OIDC-Test-${{ github.run_id }}
+          allowed-account-ids: "020457827871"
+
+      - name: Verify caller identity
+        run: aws sts get-caller-identity
