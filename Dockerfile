@@ -4,7 +4,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-FROM python:3.12.15-slim-bookworm AS python-dependencies
+FROM python:3.15.0-slim-bookworm AS python-dependencies
 
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
@@ -14,7 +14,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --disable-pip-version-check --no-cache-dir \
     -r /tmp/requirements.txt
 
-FROM python:3.12.15-slim-bookworm AS runtime
+FROM python:3.15.0-slim-bookworm AS runtime
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
