@@ -1,635 +1,474 @@
-# TrackFusionWeb - Backend
+# TrackFusionWeb API
 
-This is the **server** part of TrackFusionWeb, a web application for music sharing. This API handles all the important tasks like storing user information, managing music details, and processing requests from the website. While users interact with the website interface, this server does the heavy lifting by talking to the database and making sure everything works smoothly.
+TrackFusionWeb is a music-sharing application. This repository contains its Node.js API, authentication, PostgreSQL data model, Redis-backed sessions and job queues, S3 upload workflow, and Python audio analysis.
 
-## What it Does
+The backend can run directly on a development machine or behind Nginx on AWS EC2. AWS credentials are discovered through the standard SDK credential chain; permanent AWS keys do not belong in `.env`.
 
-**Key Features:**
+## Architecture
 
-- **User Management**: sign up, login, profiles
-- **Music Management**: uploads and storage
-- **Security**: email verification
-- **Interaction**: track commenting
-- ~~**Playlist System**: creation and sharing~~
-- ~~**Search Engine**: song search and discovery~~
-- ~~**Social Features**: user following system~~
-
-## Technology Stack
-
-- **Node.js**: Server runtime environment
-- **Express.js**: Web application framework
-- **PostgreSQL**: Relational database
-- **Redis**: Session management and caching
-- **AWS Services**:
-  - **S3**: Cloud storage for audio files
-  - **IAM**: Access management
-  - ~~**Secrets Manager**: Secure configuration~~
-- **JWT**: Authentication and authorization
-- ~~**Mailgun**: Email service for notifications~~
-
-## Prerequisites
-
-**Required Software:**
-
-- **Node.js** >= 16.x
-- **PostgreSQL** >= 14.x
-- **AWS Account**
-
-**Required Knowledge:**
-
-- **Backend Development**: Node.js and Express
-- **Database**: SQL and database management
-- **Cloud Services**: AWS fundamentals, especially S3 and IAM
-
-## Project Setup
-
-> 🚀 **Before You Dive In**:
->
-> This backend needs a few technical services to work its magic: AWS for cloud storage, PostgreSQL for data, and Redis for speed.
->
-> Think of it like building IKEA furniture. You'll need the right tools, patience, and maybe a small emotional breakdown. So you've been warned :P
-
-### 1. AWS Configuration
-
-> **Note**: Keep everything you create in the same AWS region. Otherwise you're going to run into annoying issues that make zero sense at first.
-
-#### Create an IAM User
-
-1. Log into the AWS Console
-2. Go to the IAM service
-3. Create a new user with programmatic access
-4. Attach these policies:
-   - `AmazonS3FullAccess`
-   - `SecretsManagerReadWrite`
-5. Create and save the **Access Key ID** and **Secret Access Key**
-
-#### Create an S3 Bucket
-
-1. Create a new S3 bucket for storing audio files
-2. Enable the proper CORS settings
-3. Save the bucket name
-
-### 2. Database Setup
-
-The project uses PostgreSQL for data storage.
-
-#### Install PostgreSQL
-
-Install PostgreSQL version `14.x` or newer.
-
-#### Create Database
-
-In this example, the database is called:
-
-```sql
-CREATE DATABASE trackfusionweb_db;
-````
-
-#### Initialize Your Database with Important Data
-
-The SQL file should be located in this project folder:
-
-```txt
-init_database.sql
-```
-
-You can initialize the database in one of two ways:
-
-```bash
-# Option 1: Using psql
-# Replace 'your_username' with your PostgreSQL username
-
-psql -U your_username -d trackfusionweb_db -f init_database.sql
-```
-
-Or using pgAdmin:
-
-```txt
-Open pgAdmin
-Select Database
-Open Query Tool
-Open init_database.sql
-Execute
-```
-
-### 3. Environment Configuration
-
-> **Note:** Use `NODE_ENV=development` for local development. Use `NODE_ENV=production` only when deploying the API in a production environment.
-
-Create your `.env` file with these configurations:
-
-```env
-# Environment
-NODE_ENV=development
-
-# AWS Configuration
-AWS_REGION=your-region
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_S3_BUCKET=your-bucket-name
-
-# Security
-CORS_ALLOWED_ORIGINS="http://localhost:3001,http://localhost:3000"
-SESSION_SECRET=your-long-random-string
-JWT_SECRET=another-random-string
-JWT_SECRET_PASSWORD_RESET=different-random-string
-
-# Database
-DATABASE_URL="postgres://username:password@localhost:5432/trackfusionweb_db"
-
-# Server
-PORT=3000
-DOMAIN=localhost
-
-# Email
-MAILGUN_API_KEY=your-mailgun-key
-MAILGUN_DOMAIN=your-domain
-MAILGUN_FROM_EMAIL="Your App <noreply@yourdomain.com>"
-
-# Media Settings
-AUDIO_MAX_LENGTH=900
-AUDIO_MAX_FILE_SIZE=300
-IMAGE_MAX_FILE_SIZE=50
-
-# File Type Restrictions
-ALLOWED_AUDIO_TYPES=audio/mp3,audio/wav,audio/mpeg,audio/ogg
-ALLOWED_IMAGE_TYPES=image/jpeg,image/png,image/heic
-```
-
-### Production HTTPS / Cookie Setup
-
-When the frontend is served over HTTPS, the API should also be reachable through HTTPS.
-
-The Node/Express server can still run with plain HTTP internally if Nginx handles HTTPS in front of it.
-
-Use production-style environment values like:
-
-```env
-NODE_ENV=production
-FRONTEND_URL=https://your-frontend-domain.com
-CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com
-COOKIE_SECURE=true
-COOKIE_SAME_SITE=none
-```
-
-Only set this if you intentionally need cookies shared across subdomains:
-
-```env
-COOKIE_DOMAIN=.your-domain.com
-```
-
-If your frontend and API are on the same registrable site, such as:
-
-```txt
-https://your-domain.com
-https://api.your-domain.com
-```
-
-then `COOKIE_SAME_SITE=lax` is usually preferred.
-
-If they are on different sites, such as a Vercel domain calling a separate API domain, use:
-
-```env
-COOKIE_SAME_SITE=none
-COOKIE_SECURE=true
-```
-
-### Production Nginx + HTTPS Setup
-
-In production, this API should not be accessed directly through the raw EC2 public IP or through a public `:3000` port.
-
-Instead, the API should be reached through a real HTTPS domain.
-
-Example:
-
-```txt
-https://your-api-domain.com
-```
-
-This can be either a main domain or a subdomain, depending on how you want to deploy it.
-
-Examples:
-
-```txt
-https://your-domain.com
-https://api.your-domain.com
-https://backend.your-domain.com
-```
-
-The Express server still runs normally on the EC2 instance using plain HTTP:
-
-```txt
-http://localhost:3000
-```
-
-Nginx sits in front of Express and acts as the public entry point. It receives traffic from the browser, handles HTTPS with the SSL certificate, then forwards the request to the local Express server.
-
-```txt
+```text
 Browser
-  ↓
-https://your-api-domain.com
-  ↓
-Nginx
-  ↓
-http://localhost:3000
-  ↓
-Express API
+  |
+  | HTTPS (production)
+  v
+Nginx :80/:443
+  |
+  | HTTP on loopback
+  v
+Express :8081
+  |-- PostgreSQL :5432 (users, tracks, tokens, metadata)
+  |-- Redis :6379 (sessions and Bull queues)
+  |-- Python + FFmpeg (audio download and analysis)
+  `-- Amazon S3 (presigned uploads and private playback)
 ```
 
-This is needed because browsers expect the API to use HTTPS when the frontend is also served over HTTPS. If the frontend is HTTPS but the API is HTTP, browsers may block requests, cookies may fail, and the app can break in production.
+Production runs Express as the unprivileged `trackfusion` system user. PostgreSQL, Redis, and Express listen locally; only Nginx and restricted SSH are exposed by the host and AWS firewalls.
 
-#### Why Nginx is Used
+## Technology
 
-Nginx is the public-facing web server / reverse proxy.
+- Node.js 22 or newer (the current EC2 deployment pins Node 24.16.0)
+- Express 4
+- PostgreSQL 16
+- Redis 7 and Bull 4
+- Python 3.12, librosa, NumPy, yt-dlp, and FFmpeg
+- AWS SDK v3 and Amazon S3
+- Mailgun when email delivery is enabled
+- Nginx and systemd on EC2
+- Jest for unit tests
 
-It handles:
+## Repository layout
 
-```txt
-HTTPS traffic
-SSL certificate routing
-Forwarding requests to Express
-Keeping Express private behind localhost
+```text
+controllers/       Request and application logic
+deploy/            EC2 bootstrap, systemd, and Nginx files
+docs/aws/          IAM and S3 CORS documents
+docs/MODERNIZATION_HANDOFF.md
+                   Evidence-based modernization state and restart point
+middlewares/       Authentication, CORS, sessions, limits, and errors
+python/scripts/    Audio conversion and analysis
+queue/             Redis-backed Bull workers
+routes/            Express routes
+scripts/           Database, smoke, and AWS verification commands
+services/          PostgreSQL, S3, email, image, and audio services
+utils/             Shared validation and security helpers
+init_database.sql  Rerunnable PostgreSQL schema
 ```
 
-Express handles the actual API logic.
+## Local development
 
-Nginx handles the public web traffic.
+### 1. Install prerequisites
 
-This keeps the backend setup cleaner and safer because port `3000` does not need to be publicly exposed.
-
-#### Production API Domain
-
-Use a real domain for the API.
-
-Example:
-
-```txt
-your-api-domain.com
-```
-
-This can be a main domain or a subdomain.
-
-DNS should point this domain to the EC2 public IP using an `A` record.
-
-Example if using a main domain:
-
-```txt
-Type: A
-Name: @
-Value: EC2_PUBLIC_IP
-```
-
-Example if using a subdomain:
-
-```txt
-Type: A
-Name: api
-Value: EC2_PUBLIC_IP
-```
-
-Do not use the EC2 private IP for DNS. The private IP usually looks like this:
-
-```txt
-172.x.x.x
-```
-
-The DNS record needs the public EC2 IP.
-
-#### EC2 Security Group
-
-The EC2 security group should allow:
-
-```txt
-22    SSH      only from trusted IPs if possible
-80    HTTP     0.0.0.0/0
-443   HTTPS    0.0.0.0/0
-```
-
-Port `3000` should not be publicly exposed unless there is a specific reason.
-
-Nginx should be public.
-
-Express should stay private on:
-
-```txt
-localhost:3000
-```
-
-#### Nginx File Locations
-
-The active Nginx config should live here:
-
-```txt
-/etc/nginx/sites-available/trackfusionweb-api
-```
-
-The enabled site is a symlink here:
-
-```txt
-/etc/nginx/sites-enabled/trackfusionweb-api
-```
-
-This is the normal Ubuntu Nginx structure:
-
-```txt
-sites-available = configs that exist
-sites-enabled   = configs that are turned on
-```
-
-#### Nginx Config
-
-Create or edit the config file:
+Ubuntu example:
 
 ```bash
-sudo nano /etc/nginx/sites-available/trackfusionweb-api
+sudo apt-get update
+sudo apt-get install -y postgresql postgresql-client redis-server ffmpeg python3-venv
 ```
 
-Base config before HTTPS:
-
-```nginx
-# TrackFusion Web API
-# Public URL: https://your-api-domain.com
-# Proxies to Express running locally on port 3000
-
-server {
-    listen 80;
-    server_name your-api-domain.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-Replace `your-api-domain.com` with the real domain being used for the API.
-
-Enable the config:
+Install Node.js 22 or newer separately, then confirm the tools:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/trackfusionweb-api /etc/nginx/sites-enabled/trackfusionweb-api
-```
-
-If the symlink already exists, do not create it again. Just test and reload Nginx.
-
-Test the Nginx config:
-
-```bash
-sudo nginx -t
-```
-
-Reload Nginx:
-
-```bash
-sudo systemctl reload nginx
-```
-
-#### Test Express Locally
-
-Before testing the public domain, make sure Express works locally on the EC2 instance:
-
-```bash
-curl http://localhost:3000/health
-```
-
-Expected result should show the API health status.
-
-#### Test HTTP First
-
-Before setting up HTTPS, test the public HTTP version:
-
-```bash
-curl http://your-api-domain.com/health
-```
-
-This confirms:
-
-```txt
-DNS → EC2 → Nginx → Express
-```
-
-If HTTP does not work, fix that before touching Certbot. Otherwise you’ll be debugging two demons at once.
-
-#### Install Certbot
-
-Certbot is used to create and renew the SSL certificate.
-
-```bash
-sudo apt update
-sudo apt install certbot python3-certbot-nginx -y
-```
-
-#### Add HTTPS Certificate
-
-Run:
-
-```bash
-sudo certbot --nginx -d your-api-domain.com
-```
-
-When Certbot asks whether to redirect HTTP to HTTPS, choose the redirect option.
-
-After this, the API should be available at:
-
-```txt
-https://your-api-domain.com
-```
-
-Test it:
-
-```bash
-curl https://your-api-domain.com/health
-```
-
-#### Certificate Auto-Renewal
-
-Check the current certificate:
-
-```bash
-sudo certbot certificates
-```
-
-Test renewal:
-
-```bash
-sudo certbot renew --dry-run
-```
-
-A good result looks like:
-
-```txt
-Congratulations, all simulated renewals succeeded
-```
-
-Check that the renewal timer exists:
-
-```bash
-systemctl list-timers | grep certbot
-```
-
-A good result should show something like:
-
-```txt
-certbot.timer    certbot.service
-```
-
-This means Certbot has an automatic renewal timer set up.
-
-#### Important Renewal Notes
-
-Auto-renewal should keep working as long as:
-
-```txt
-your-api-domain.com still points to this EC2 instance
-ports 80 and 443 stay open
-Nginx config stays valid
-certbot.timer stays enabled
-the EC2 instance stays active
-```
-
-Do not close port `80`, even if HTTP redirects to HTTPS. Certbot may still need it for renewal checks.
-
-#### Useful Nginx / Certbot Commands
-
-```bash
-sudo systemctl status nginx
-sudo nginx -t
-sudo systemctl reload nginx
-sudo certbot certificates
-sudo certbot renew --dry-run
-systemctl list-timers | grep certbot
-curl http://localhost:3000/health
-curl https://your-api-domain.com/health
-```
-
-#### Frontend API URL
-
-The frontend should use the HTTPS API domain:
-
-```env
-NEXT_PUBLIC_API_URL=https://your-api-domain.com
-```
-
-After changing frontend environment values, rebuild and restart the frontend if it is running as a production Next.js build.
-
-### 4. Install Dependencies
-
-```bash
-npm install
-```
-
-### 5. Redis Setup
-
-#### Install Redis
-
-```bash
-sudo apt update
-sudo apt install redis-server
-```
-
-#### Start Redis
-
-```bash
-sudo systemctl start redis-server
-```
-
-#### Verify Installation
-
-```bash
+node --version
+python3 --version
+pg_isready
 redis-cli ping
+ffmpeg -version
 ```
 
-If you see:
+Redis should return `PONG`, and PostgreSQL should report that it accepts connections.
 
-```txt
-PONG
-```
+### 2. Create the local database role
 
-Redis is running correctly.
-
-### 6. Start The Server
+Choose a strong local password and use the same value in `DATABASE_URL`:
 
 ```bash
+sudo -u postgres psql -v ON_ERROR_STOP=1 -c \
+"CREATE ROLE trackfusion WITH LOGIN PASSWORD 'replace-with-a-strong-password';"
+
+sudo -u postgres createdb --owner=trackfusion trackfusionweb_db
+```
+
+If these resources already exist, update the role password instead of recreating them:
+
+```bash
+sudo -u postgres psql -c \
+"ALTER ROLE trackfusion WITH PASSWORD 'replace-with-a-strong-password';"
+```
+
+### 3. Configure the application
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`. Generate each application secret independently:
+
+```bash
+openssl rand -hex 32
+```
+
+The example file documents every variable. Important groups are:
+
+| Group | Variables |
+| --- | --- |
+| Server | `NODE_ENV`, `HOST`, `PORT`, `REQUEST_BODY_LIMIT` |
+| Browser | `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `DEV_URLS` |
+| Auth | `SESSION_SECRET`, `JWT_SECRET`, `JWT_SECRET_PASSWORD_RESET` |
+| Cookies | `COOKIE_SECURE`, `COOKIE_SAME_SITE`, optional `COOKIE_DOMAIN` |
+| Data | `DATABASE_URL`, `REDIS_URL` |
+| Python | `PYTHON_EXECUTABLE` |
+| AWS | `AWS_REGION`, `AWS_PROFILE`, `AWS_S3_BUCKET` |
+| Email | `EMAIL_DELIVERY_ENABLED`, `MAILGUN_*`, development exposure flags |
+| Media | maximum duration/size and allowed MIME-type variables |
+
+For local development without Mailgun, keep email delivery disabled and explicitly enable the two development-only token flags. They must remain disabled in production.
+
+### 4. Install dependencies
+
+```bash
+npm ci
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+```
+
+### 5. Initialize and verify PostgreSQL
+
+```bash
+npm run db:init
+npm run db:verify
+```
+
+`db:init` is rerunnable. It creates missing enums, tables, sequences, constraints, and indexes without deleting existing application data.
+
+### 6. Run and test
+
+```bash
+npm test -- --runInBand
 npm start
 ```
 
-### 7. Verify Setup
+In another terminal:
 
-Check this endpoint to verify your setup:
-
-```txt
-http://localhost:3000/health
+```bash
+npm run smoke
 ```
 
-For production:
+The default local health URL is `http://127.0.0.1:8081/health`.
 
-```txt
-https://your-api-domain.com/health
+## NPM commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm start` | Start the API |
+| `npm run dev` | Start with nodemon |
+| `npm test -- --runInBand` | Run unit tests |
+| `npm run db:init` | Apply the rerunnable database schema |
+| `npm run db:verify` | Verify required tables and enums |
+| `npm run smoke` | Check health and representative public endpoints |
+| `npm run aws:verify` | Put, read, and remove one temporary S3 verification object |
+
+`npm run aws:verify` mutates only a randomly named object under `deployment-check/` and removes it in a `finally` block.
+
+## Docker
+
+The production image contains only the API runtime, Python environment, and FFmpeg. PostgreSQL and Redis are separate services; they are not bundled into the API container.
+
+For local Compose use:
+
+```bash
+cp .env.example .env
+# Configure the application secrets and POSTGRES_PASSWORD in .env first.
+docker compose config --quiet
+docker compose up --build
 ```
+
+Use `docker compose config --quiet` for validation. Plain `docker compose config` renders resolved environment values and can print secrets to the terminal or captured logs.
+
+Then verify it from another terminal:
+
+```bash
+npm run smoke
+```
+
+Compose binds the API to `127.0.0.1:8081`, waits for PostgreSQL and Redis health checks, and applies the rerunnable schema before starting Express.
+
+If a container needs S3, export refreshable credentials into the current shell before starting Compose:
+
+```bash
+eval "$(aws configure export-credentials \
+  --profile trackfusion-local --format env)"
+docker compose up --build
+```
+
+These credentials are temporary and are passed through the process environment; they are not copied into the image or `.env`.
+
+Stop the stack without deleting its database and Redis volumes:
+
+```bash
+docker compose down
+```
+
+`docker compose down --volumes` permanently deletes the local container data and should be used only when a full reset is intended.
+
+## AWS authentication
+
+### Local machine
+
+The preferred workflow uses refreshable temporary console credentials:
+
+```bash
+aws login --profile trackfusion-local --region us-east-1
+aws sts get-caller-identity --profile trackfusion-local
+```
+
+Set `AWS_PROFILE=trackfusion-local` locally. Do not add access-key IDs or secret keys to `.env`.
+
+### EC2
+
+The instance uses its attached IAM role automatically. No AWS credential variables or files are deployed to EC2.
+
+Canonical AWS names:
+
+| Resource | Name |
+| --- | --- |
+| S3 bucket | `trackfusionweb-audio.s3bucket-020457827871-us-east-1-an` |
+| IAM policy | `TrackFusionWeb-API_Policy` |
+| IAM role/profile | `TrackFusionWeb-API_Role` |
+| EC2 instance | `TrackFusionWeb-API-EC2` |
+| Security group | `TrackFusionWeb-API-SG` |
+| GitHub deploy policy | `TrackFusionWeb-GitHub-Deploy_Policy` |
+| GitHub deploy role | `TrackFusionWeb-GitHub-Deploy_Role` |
+| SSM deploy document | `TrackFusionWeb-Deploy` |
+| Terraform state bucket | `trackfusionweb-terraform-state-020457827871-us-east-1` |
+
+The policy grants only `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` for objects in this bucket. See [the policy document](docs/aws/TrackFusionWeb-API_Policy.json), [EC2 trust policy](docs/aws/TrackFusionWeb-API_TrustPolicy.json), and [bucket CORS configuration](docs/aws/TrackFusionWeb-S3-CORS.json).
+
+The bucket blocks public access and uses server-side encryption. Browser access uses short-lived presigned URLs.
+
+## Terraform infrastructure
+
+The live API bucket, IAM policy/role/profile, security group/rules, and EC2 instance are managed from [`infrastructure/terraform`](infrastructure/terraform). They were imported under their existing canonical `TrackFusionWeb-*` names; Terraform did not recreate them.
+
+State is encrypted and versioned in the dedicated private bucket `trackfusionweb-terraform-state-020457827871-us-east-1`. The main configuration deliberately does not manage that bootstrap bucket, preventing a state operation from deleting its own backend.
+
+```bash
+cp infrastructure/terraform/terraform.tfvars.example \
+  infrastructure/terraform/terraform.tfvars
+# Set developer_ssh_cidr to the trusted public IPv4 address followed by /32.
+
+AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform init
+AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform fmt -check -recursive
+AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform validate
+AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform plan
+```
+
+The real `terraform.tfvars`, local provider directory, saved plans, and any local state files are ignored. The one-time import identifiers are documented in [`infrastructure/terraform/IMPORTS.md`](infrastructure/terraform/IMPORTS.md); do not rerun imports against the populated state.
+
+## CI/CD
+
+The workflow at [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs on pull requests and pushes. It performs:
+
+- Node dependency installation and production dependency audit;
+- all Jest tests plus Python bytecode compilation;
+- PostgreSQL schema initialization/verification and live API smoke tests against PostgreSQL and Redis service containers;
+- a real production Docker image build;
+- Terraform formatting, offline-backend initialization, and validation.
+
+A deployment runs only after every job succeeds and only for `main` (either a push or a manual dispatch from `main`). GitHub obtains short-lived AWS credentials through OIDC; there are no AWS access keys or SSH private keys in repository secrets. The deployment role can only upload/remove an object under the bucket's `deployments/` prefix, invoke `TrackFusionWeb-Deploy` on the one API instance, read that command's result, and discover the instance's public address.
+
+The SSM document downloads the release on EC2, verifies its SHA-256 checksum, validates required files, synchronizes the release, reruns the idempotent database/configuration checks, restarts the service, and verifies both direct and Nginx health. The workflow removes its S3 artifact even after a failed deployment.
+
+In GitHub, create or review the `production` environment under **Settings → Environments** and protect it so only `main` can deploy. An optional required reviewer provides a manual approval gate. The AWS trust policy is already restricted to this repository and environment.
+
+Dependabot configuration at [`.github/dependabot.yml`](.github/dependabot.yml) checks npm, Python, Docker, Terraform, and GitHub Actions dependencies weekly.
+
+## Monitoring
+
+Terraform manages two standard-resolution CloudWatch alarms without installing another agent or log pipeline:
+
+- `TrackFusionWeb-API-StatusCheckFailed` for two consecutive failed EC2 status checks;
+- `TrackFusionWeb-API-HighCPU` for average CPU at or above 80% for 15 minutes.
+
+They are visible in CloudWatch immediately. To receive email notifications, set `monitoring_alert_email` in the ignored `infrastructure/terraform/terraform.tfvars`, run a reviewed Terraform plan/apply, and confirm the subscription email sent by AWS. Until an address is explicitly configured, Terraform does not create an unused SNS topic.
+
+These two alarm metrics fit within CloudWatch's current account free tier of 10 standard-resolution alarm metrics if that allowance is otherwise unused. Systems Manager Run Command on EC2 and IAM/OIDC have no additional service charge. Always confirm the current AWS pricing pages and the account's actual usage before assuming a zero-dollar total.
+
+## Current EC2 deployment
+
+The initial deployment intentionally avoids a load balancer, NAT gateway, RDS, ElastiCache, and Elastic IP. PostgreSQL and Redis run on the same `t3.small` instance to keep the first deployment inexpensive and understandable.
+
+Current design:
+
+- Ubuntu 24.04 LTS, `t3.small`
+- 20 GiB encrypted gp3 root volume
+- 2 GiB swap file for installation and occasional audio-processing pressure
+- IMDSv2 required
+- T3 standard CPU credits to prevent surplus-credit charges
+- ports 80/443 public; port 22 restricted to the developer IP
+- ports 5432, 6379, and 8081 not publicly exposed
+- Nginx proxies to `127.0.0.1:8081`
+- systemd restarts the API after failures and at boot
+
+The public IPv4 address is temporary and can change after a stop/start cycle.
+
+### Reproduce the manual host setup
+
+Copy a secret-free release to the instance, then run:
+
+```bash
+sudo bash deploy/ec2/bootstrap-host.sh
+sudo rsync -a /path/to/release/ /opt/trackfusion/api/
+sudo bash /opt/trackfusion/api/deploy/ec2/configure-app.sh
+```
+
+`bootstrap-host.sh` installs and verifies the system dependencies. `configure-app.sh`:
+
+- generates server-only secrets under `/etc/trackfusion/`;
+- creates the local database role and database;
+- installs Node and Python dependencies;
+- initializes and verifies the schema;
+- installs the systemd and Nginx configurations;
+- restarts the API and waits for its direct health check.
+
+The dedicated `trackfusion` system user is created by `bootstrap-host.sh`. Run both direct and proxied curls below after configuration.
+
+Useful production commands:
+
+```bash
+sudo systemctl status trackfusionweb-api
+sudo journalctl -u trackfusionweb-api -f
+sudo systemctl restart trackfusionweb-api
+sudo nginx -t
+sudo systemctl reload nginx
+curl http://127.0.0.1:8081/health
+curl http://127.0.0.1/health
+```
+
+## HTTPS and cookies
+
+The API is currently reachable over HTTP for deployment verification. Production authentication intentionally uses `Secure` cookies, so browser login will not work until HTTPS is configured.
+
+To finish HTTPS:
+
+1. Choose an API hostname, such as `api.example.com`.
+2. Give the instance a stable address before relying on DNS.
+3. Point the hostname's DNS `A` record to that address.
+4. Replace Nginx's catch-all `server_name` with the hostname.
+5. Install Certbot and request the certificate:
+
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d api.example.com
+sudo certbot renew --dry-run
+```
+
+6. Set `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, and cookie values appropriately in `/etc/trackfusion/api.env`, then restart the API.
+7. Point `NEXT_PUBLIC_API_URL` in the frontend to the HTTPS API URL and redeploy the frontend.
+
+For the Vercel frontend and a separately hosted API, use `COOKIE_SECURE=true` and `COOKIE_SAME_SITE=none`.
+
+## Email delivery
+
+Email delivery is feature-gated with `EMAIL_DELIVERY_ENABLED`.
+
+When disabled in production:
+
+- OTP generation returns `503 Email verification is temporarily unavailable`;
+- password-reset requests keep the same generic response for every address;
+- no OTP or reset token is exposed.
+
+To enable registration and password reset, configure a real Mailgun domain and set:
+
+```env
+EMAIL_DELIVERY_ENABLED=true
+EMAIL_VALIDATE_MX=true
+MAILGUN_API_KEY=...
+MAILGUN_DOMAIN=...
+MAILGUN_FROM_EMAIL=TrackFusion <noreply@example.com>
+```
+
+Restart the API and test delivery before advertising those workflows.
+
+## Representative API routes
+
+| Area | Routes |
+| --- | --- |
+| Health | `GET /health` |
+| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/session`, password reset/change routes |
+| OTP | `POST /otp/generate`, `POST /otp/verify`, `GET /otp/cooldown` |
+| Users | `POST /users/register`, `POST /users/check-email`, `GET /users/info/:userId` |
+| Tracks | public/user/favorite/detail/update/delete and authorized-playback routes under `/tracks` |
+| Uploads | `POST /aws/presigned-url`, processing and job-status routes under `/upload` |
+| Audio | authenticated conversion/analysis routes under `/audio` |
+| Public | public user track/favorite routes under `/public` |
+| Enums | `GET /enums/trackAttributes`, `GET /enums/:type` |
+
+Protected routes use the verified JWT identity, and queued-job/status access is restricted to the owning user.
+
+## Security notes
+
+- Never commit `.env`, AWS credentials, private keys, Mailgun keys, database passwords, or generated server files.
+- Use a unique 32-byte-or-longer value for each production secret.
+- EC2 receives temporary AWS credentials from `TrackFusionWeb-API_Role`.
+- GitHub Actions receives short-lived, repository- and environment-scoped credentials through OIDC.
+- The S3 bucket remains private; client transfers use presigned URLs.
+- PostgreSQL, Redis, and Express are bound behind network controls.
+- Rate limits protect global, authentication, and OTP endpoints.
+- Session data is stored in Redis rather than Express memory.
+- Passwords are hashed with bcrypt; password-reset tokens are single-use and time-limited.
+- Review logs before sharing them; request bodies and database parameters can contain private data.
 
 ## Troubleshooting
 
-If you encounter issues:
+### API will not start
 
-1. Verify all environment variables are set correctly
-2. Ensure PostgreSQL is running and accessible
-3. Confirm Redis server is active
-4. Check AWS credentials and permissions
-5. Verify network connectivity and CORS settings
-6. Check that Nginx config is valid with `sudo nginx -t`
-7. Check that Certbot renewal works with `sudo certbot renew --dry-run`
-8. Make sure the API domain points to the EC2 public IP
-9. Make sure ports `80` and `443` are open in the EC2 security group
-10. Light a candle, draw a circle with chalk, and chant "npm install" three times. Results may vary.
+```bash
+sudo journalctl -u trackfusionweb-api -n 100 --no-pager
+```
 
-> **Just know:** This wasn't built with public usage in mind. If none of these steps work and you really want to get this working, just shoot me an email at [christianvieux.dev@gmail.com](mailto:christianvieux.dev@gmail.com). I usually respond quickly and can help sort things out.
+The startup sequence validates configuration and verifies PostgreSQL and Redis before listening.
 
-## API Endpoints
+### Database failure
 
-### Authentication Routes
+```bash
+pg_isready
+npm run db:verify
+```
 
-* POST `/auth/register` - Create new account
-* POST `/auth/login` - User login
-* POST `/auth/logout` - User logout
-* GET `/auth/verify-email/:token` - Verify email address
+Confirm the role password in `DATABASE_URL` matches PostgreSQL.
 
-### User Routes
+### Redis failure
 
-* GET `/users/me` - Get current user profile
-* GET `/users/:id` - Get user by ID
-* PUT `/users/me` - Update current user
-* GET `/users/:id/tracks` - Get user's public tracks
-* GET `/users/:id/favorites` - Get user's favorite tracks
+```bash
+redis-cli ping
+sudo systemctl status redis-server
+```
 
-### Track Routes
+### S3 failure
 
-* GET `/tracks` - Get all tracks
-* GET `/tracks/:id` - Get track by ID
-* POST `/tracks` - Upload new track
-* PUT `/tracks/:id` - Update track
-* DELETE `/tracks/:id` - Delete track
-* POST `/tracks/:id/like` - Like/unlike track
-* POST `/tracks/:id/comments` - Add comment
+```bash
+aws sts get-caller-identity --profile trackfusion-local
+npm run aws:verify
+```
 
-### Upload Routes
+On EC2, also confirm `TrackFusionWeb-API_Role` is attached and inspect the service journal.
 
-* POST `/upload/track` - Upload track file
-* GET `/upload/track-status/:jobId` - Check upload status
+### Browser requests fail
 
-### Health Check
+Check all three layers:
 
-* GET `/health` - API health status
+- Express `CORS_ALLOWED_ORIGINS` contains the exact frontend origin;
+- S3 CORS contains the origin for direct presigned transfers;
+- the frontend uses the HTTPS API URL and sends credentials where required.
 
-## Contact
+## Modernization status
 
-Feel free to reach out if you have any questions about my project:
-
-* Email: [christianvieux.dev@gmail.com](mailto:christianvieux.dev@gmail.com)
-* LinkedIn: [https://www.linkedin.com/in/christian-vieux-dev/](https://www.linkedin.com/in/christian-vieux-dev/)
-* GitHub: [https://github.com/christianvieux](https://github.com/christianvieux)
+- Phase 1: backend audit, local stabilization, tests, and local integration complete
+- Phase 2: initial EC2 deployment, IAM role, database, Redis, Nginx, S3, and remote smoke tests complete
+- Phase 3: documentation aligned with the working system
+- Phase 4: production image and Compose topology passed local build, health, schema, and smoke checks; clean rebuild after a build-context exclusion fix pending
+- Phase 5: existing AWS resources imported into encrypted remote Terraform state; configuration validated and converged with a no-change plan
+- Phase 6: CI/CD workflow, keyless GitHub-to-AWS deployment path, dependency updates, and baseline CloudWatch monitoring implemented locally
+- Remaining production prerequisites: API domain/HTTPS and Mailgun credentials
+- Pending external verification: the first local or GitHub-hosted Docker build and the first GitHub workflow run after this branch is pushed
 
