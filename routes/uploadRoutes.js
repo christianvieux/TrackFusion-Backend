@@ -10,6 +10,10 @@ import { authenticateToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
+function belongsToUserUpload(key, userId) {
+  return key.startsWith(`uploads/${userId}/`);
+}
+
 const uploadTrackSchema = Joi.object({
   trackUrl: Joi.object({
     key: Joi.string().required(),
@@ -52,7 +56,7 @@ router.post("/track", authenticateToken, async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const userId = req.session.user.id;
+    const userId = req.user.id;
     const {
       trackUrl,
       imageUrl,
@@ -65,6 +69,14 @@ router.post("/track", authenticateToken, async (req, res) => {
       mood,
       bpm,
     } = req.body;
+
+    if (
+      !belongsToUserUpload(trackUrl.key, userId) ||
+      (imageUrl && !belongsToUserUpload(imageUrl.key, userId))
+    ) {
+      return res.status(403).json({ error: "Upload key does not belong to this user" });
+    }
+
     const jobId = (
       await trackUploadQueue.add("track", {
         userId,
@@ -92,6 +104,9 @@ router.post("/track", authenticateToken, async (req, res) => {
 router.get("/track-status/:jobId", authenticateToken, async (req, res) => {
   try {
     const job = await trackUploadQueue.getJob(req.params.jobId);
+    if (!job || String(job.data.userId) !== String(req.user.id)) {
+      return res.status(404).json({ error: "Upload job not found" });
+    }
     const state = await job.getState();
 
     const response = {
@@ -117,8 +132,12 @@ router.post("/profile-picture", authenticateToken, async (req, res) => {
       return res.status(400).json({ error: error.details[0].message });
     }
 
-    const userId = req.session.user.id;
+    const userId = req.user.id;
     const { imageUrl } = req.body;
+    if (!belongsToUserUpload(imageUrl.key, userId)) {
+      return res.status(403).json({ error: "Upload key does not belong to this user" });
+    }
+
     const jobId = (
       await profilePictureUploadQueue.add("profile-picture", {
         userId,
@@ -140,6 +159,9 @@ router.get(
   async (req, res) => {
     try {
       const job = await profilePictureUploadQueue.getJob(req.params.jobId);
+      if (!job || String(job.data.userId) !== String(req.user.id)) {
+        return res.status(404).json({ error: "Upload job not found" });
+      }
       const state = await job.getState();
 
       const response = {

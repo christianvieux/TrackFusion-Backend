@@ -32,8 +32,6 @@ router.get("/:id/authorized-url", async (req, res) => {
 
   try {
     const track = await getTrack(id);
-    console.log(`Track fetched: ${JSON.stringify(track)}`, track.is_private);
-
     if (!track || (track.is_private && track.creator_id !== userId)) {
       console.warn(
         `Unauthorized access attempt by user ID: ${userId} for track ID: ${id}`
@@ -45,7 +43,6 @@ router.get("/:id/authorized-url", async (req, res) => {
 
     const randomId = Math.random().toString(36).substring(7);
     const authorizedUrl = await authorizeTrackUrl(track.url);
-    console.log(`Authorized URL generated: ${authorizedUrl}, randomId: ${randomId}`);
     res.json({ url: authorizedUrl, randomId });
   } catch (error) {
     console.error("Error fetching authorized URL for track:", error);
@@ -55,10 +52,7 @@ router.get("/:id/authorized-url", async (req, res) => {
 
 // Route to get a user's created tracks
 router.get("/user", authenticateToken, async (req, res) => {
-  if (!req.session.user || !req.session.user.id) {
-    return res.status(400).json({ error: "User not authenticated" });
-  }
-  const userId = req.session.user.id;
+  const userId = req.user.id;
   try {
     const userTracks = await getUserTracks(userId);
     res.json(userTracks);
@@ -81,10 +75,7 @@ router.get("/public", async (req, res) => {
 
 // Route to get user's favorite tracks
 router.get("/favorites", authenticateToken, async (req, res) => {
-  if (!req.session.user || !req.session.user.id) {
-    return res.status(400).json({ error: "User not authenticated" });
-  }
-  const userId = req.session.user.id;
+  const userId = req.user.id;
   try {
     const favoriteTracks = await getUserFavoriteTracks(userId);
     res.json(favoriteTracks);
@@ -96,7 +87,7 @@ router.get("/favorites", authenticateToken, async (req, res) => {
 
 // Route to remove a favorite track
 router.delete("/favorites", authenticateToken, async (req, res) => {
-  const userId = req.session.user.id;
+  const userId = req.user.id;
   const { trackId } = req.body;
   try {
     const favorite = await unfavoriteTrack(userId, trackId);
@@ -120,7 +111,7 @@ router.delete("/favorites", authenticateToken, async (req, res) => {
 
 // Route to favorite a track
 router.post("/favorites", authenticateToken, async (req, res) => {
-  const userId = req.session.user.id;
+  const userId = req.user.id;
   const { trackId } = req.body;
   try {
     const favorite = await favoriteTrack(userId, trackId);
@@ -155,7 +146,8 @@ router.get("/:id", async (req, res) => {
     }
 
     const track = await getTrack(value.id);
-    if (!track) {
+    const userId = req.session.user?.id;
+    if (!track || (track.is_private && track.creator_id !== userId)) {
       return res.status(404).json({ error: "Track not found or access denied" });
     }
 
@@ -168,7 +160,7 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", authenticateToken, async (req, res) => {
   const trackId = req.params.id;
-  const userId = req.session.user?.id;
+  const userId = req.user.id;
   const { name, description, is_private } = req.body;
 
   // Validate input
@@ -214,12 +206,15 @@ router.put("/:id", authenticateToken, async (req, res) => {
 });
 
 router.delete("/:id", authenticateToken, async (req, res) => {
-
-  console.log(req.cookies, req.session)
   const trackId = req.params.id;
-  const userId = req.user.id;  // Change this line to use req.user
+  const userId = req.user.id;
 
   try {
+    const track = await getTrack(trackId);
+    if (!track || track.creator_id !== userId) {
+      return res.status(404).json({ error: "Track not found or access denied" });
+    }
+
     const deletedTrack = await deleteTrack(trackId);
 
     if (deletedTrack) {

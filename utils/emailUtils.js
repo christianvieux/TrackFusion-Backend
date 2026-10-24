@@ -4,37 +4,24 @@
 import dotenv from 'dotenv'; dotenv.config();
 
 // 
-import fs from 'fs';
-import path from 'path';
-import dns from 'dns';
+import { promises as dns } from 'dns';
 import validator from 'validator';
+import disposableEmailDomains from 'disposable-email-domains/index.js';
 import { mailgunService } from "../services/mailgunService.js";
 
-
-
-const disposableEmailDomains = JSON.parse(
-  fs.readFileSync(
-    path.resolve("node_modules/disposable-email-domains/index.json"),
-    "utf8"
-  )
-);
-
-const ALLOWED_DOMAINS = [
-  // 'example.com'
-]; // Allowed email domains for production
-const DEVELOPMENT_MODE = process.env.NODE_ENV === 'development'; // Set your environment variable accordingly
-
-
-
-
-
-
-
+function isEnabled(name) {
+  return process.env[name] === "true";
+}
 
 const getEmailMessage = (email, code, purpose) => {
+  const subject = purpose === "registration"
+    ? "Verify your TrackFusion email"
+    : "Reset your TrackFusion password";
+
   const baseMessage = {
     to: email,
     from: process.env.MAILGUN_FROM_EMAIL,
+    subject,
     template: {
       html: `
         <!DOCTYPE html>
@@ -85,11 +72,20 @@ const getEmailMessage = (email, code, purpose) => {
 };
 
 export async function sendOTPCodeToEmail(email, code, purpose) {
+  if (!isEnabled("EMAIL_DELIVERY_ENABLED")) return;
+
   const msg = getEmailMessage(email, code, purpose);
-  await mailgunService.sendEmail(msg.to, msg.subject, msg.text, msg.html);
+  await mailgunService.sendEmail(
+    msg.to,
+    msg.subject,
+    msg.template.text,
+    msg.template.html,
+  );
 }
 
 export async function sendPasswordResetCodeEmail(email, resetLink) {
+  if (!isEnabled("EMAIL_DELIVERY_ENABLED")) return;
+
   await mailgunService.sendEmail(
     email,
     "Password Reset",
@@ -113,22 +109,26 @@ export async function isEmailValid(email) {
 
   const domain = email.split("@")[1];
 
-  if (!DEVELOPMENT_MODE && !ALLOWED_DOMAINS.includes(domain)) {
+  const allowedDomains = (process.env.EMAIL_ALLOWED_DOMAINS || "")
+    .split(",")
+    .map((allowedDomain) => allowedDomain.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (allowedDomains.length > 0 && !allowedDomains.includes(domain.toLowerCase())) {
     return { error: "Email domain not allowed" };
   }
 
-  if (disposableEmailDomains.includes(domain)) {
+  if (disposableEmailDomains.includes(domain.toLowerCase())) {
     return { error: "Disposable email addresses are not allowed" };
   }
 
-  try {
-    const isValidDomain = await new Promise((resolve) => {
-      dns.resolveMx(domain, (err, addresses) => {
-        resolve(!err && addresses && addresses.length > 0);
-      });
-    });
+  if (!isEnabled("EMAIL_VALIDATE_MX")) {
+    return { error: null };
+  }
 
-    if (!isValidDomain) {
+  try {
+    const addresses = await dns.resolveMx(domain);
+    if (addresses.length === 0) {
       return { error: "Invalid email domain" };
     }
   } catch (error) {

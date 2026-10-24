@@ -2,17 +2,19 @@
 import crypto from 'crypto';
 import { queryToDatabase } from '../services/dbService.js';
 import { sendOTPCodeToEmail } from './emailUtils.js';
-import moment from 'moment-timezone';
 
 
 export async function generateOtpCode(email, purpose) {
   try {
-    await isOtpCooldownActive(email, purpose);
+    const cooldownActive = await isOtpCooldownActive(email, purpose);
+    if (cooldownActive) {
+      const error = new Error("Too many verification-code requests. Please try again later.");
+      error.code = "OTP_RATE_LIMITED";
+      throw error;
+    }
     
     // Generate a new OTP code
-    const otpCode = (parseInt(crypto.randomBytes(3).toString('hex'), 16) % 1000000)
-      .toString()
-      .padStart(6, '0');
+    const otpCode = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
       
     await storeOtpCode(email, otpCode, purpose);
     await sendOtpCodeEmail(email, otpCode, purpose);
@@ -43,7 +45,7 @@ export async function isOtpCodeValid(email, code, purpose) {
     throw new Error("Email, code, and purpose are required");
   }
 
-  const query = `SELECT expires_at FROM otp_codes WHERE email = $1 AND code = $2 AND purpose = $3 AND is_valid = TRUE`;
+  const query = `SELECT expires_at FROM otp_codes WHERE email = $1 AND code = $2 AND purpose = $3 AND is_valid = TRUE AND used = FALSE ORDER BY created_at DESC LIMIT 1`;
   const values = [email, code, purpose];
   try {
     const result = await queryToDatabase(query, values);
@@ -102,35 +104,16 @@ export async function isOtpCooldownActive(email, purpose) {
     );
 
     if (lastOtpResult.rows.length > 0) {
-      const lastCreatedAt = moment.tz(
-        lastOtpResult.rows[0].created_at,
-        "America/New_York"
-      );
-      const now = moment.tz("America/New_York");
-      const timeLeft =
-        COOLDOWN_PERIOD - (now.valueOf() - lastCreatedAt.valueOf());
+      const lastCreatedAt = new Date(lastOtpResult.rows[0].created_at);
+      const timeLeft = COOLDOWN_PERIOD - (Date.now() - lastCreatedAt.getTime());
 
       if (timeLeft > 0) {
-        const minutes = Math.floor(timeLeft / 60000);
-        const seconds = Math.floor((timeLeft % 60000) / 1000);
-        throw new Error(
-          `Please wait ${minutes}:${
-            seconds < 10 ? "0" : ""
-          }${seconds} minutes before requesting a new code.`
-        );
+        return true;
       }
     }
 
     return false; // Cooldown is not active
   } catch (error) {
-    // Re-throw the specific error messages we created
-    if (
-      error.message.includes("Please wait") ||
-      error.message.includes("Too many attempts")
-    ) {
-      throw error;
-    }
-    // For unexpected errors, throw a generic error
     console.error("Error checking cooldown:", error);
     throw new Error("An error occurred while checking cooldown status");
   }
@@ -183,5 +166,5 @@ export async function useOtpCode(email, code, purpose) {
 }
 
 export async function sendOtpCodeEmail(email, code, purpose) {
-    sendOTPCodeToEmail(email, code, purpose);
-  }
+  await sendOTPCodeToEmail(email, code, purpose);
+}

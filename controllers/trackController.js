@@ -107,7 +107,6 @@ export async function authorizeTrackUrl(trackUrl) {
       tokenCache.set(cacheKey, authorizedUrl, 3300); // Cache for 55 minutes
     }
 
-    console.log('Authorized track URL:', authorizedUrl);
     return authorizedUrl;
   } catch (error) {
     console.error('Error authorizing track URL:', error);
@@ -136,31 +135,12 @@ export async function updateTrack(trackId, properties) {
 
 // Delete a track from database by ID
 export async function deleteTrackFromDatabase(trackId) {
-  const deleteInteractionsQuery = `DELETE FROM track_interactions WHERE track_id = $1`;
-  const deleteTrackQuery = `DELETE FROM tracks WHERE id = $1 RETURNING *`;
   const query = `DELETE FROM tracks WHERE id = $1 RETURNING *`;
   const values = [trackId];
 
-  try {
-    // Start a transaction
-    await queryToDatabase('BEGIN');
-    
-    // Delete related interactions
-    await queryToDatabase(deleteInteractionsQuery, values);
-    
-    // Delete the track
-    const result = await queryToDatabase(deleteTrackQuery, values);
-    
-    // Commit the transaction
-    await queryToDatabase('COMMIT');
-
-    console.log('Deleted track:', trackId, result.rows[0]);
-    return result.rows[0]; // Return the deleted track
-  } catch (error) {
-    // Rollback the transaction in case of error
-    await queryToDatabase('ROLLBACK');
-    throw error;
-  }
+  const result = await queryToDatabase(query, values);
+  console.log('Deleted track:', trackId, result.rows[0]);
+  return result.rows[0];
 }
 
 // Delete a track (Database and s3) by ID

@@ -1,8 +1,10 @@
 // Backend/routes/otpRoutes.js
 import express from 'express';
 import { generateOtp, verifyOtp, checkOtpCooldown } from '../controllers/otpController.js';
+import { otpLimiter } from '../middlewares/limiterConfig.js';
 
 const router = express.Router();
+router.use(otpLimiter);
 
 // Route to generate a new OTP code
 router.post('/generate', generateOtp);

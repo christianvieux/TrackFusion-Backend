@@ -5,7 +5,6 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
-  ListObjectsV2Command,
   CopyObjectCommand
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -47,18 +46,12 @@ class S3Service {
     this.bucket = process.env.AWS_S3_BUCKET;
     this.client = new S3Client({
       region: process.env.AWS_REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      },
     });
   }
 
   validateEnvironment() {
     const required = [
       "AWS_REGION",
-      "AWS_ACCESS_KEY_ID",
-      "AWS_SECRET_ACCESS_KEY",
       "AWS_S3_BUCKET",
     ];
     
@@ -225,20 +218,6 @@ class S3Service {
         return { exists: false };
       }
       throw error;
-    }
-  }
-
-  async listFiles(prefix) {
-    try {
-      const command = new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: prefix,
-      });
-      const response = await this.client.send(command);
-      return response.Contents || [];
-    } catch (error) {
-      console.error('Error listing files:', error);
-      throw new Error(`Failed to list files: ${error.message}`);
     }
   }
 
