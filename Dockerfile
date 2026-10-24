@@ -29,18 +29,18 @@ RUN apt-get update \
         dumb-init \
         ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 10001 trackfusion \
-    && useradd --system --uid 10001 --gid trackfusion \
-        --home-dir /home/trackfusion --create-home trackfusion
+    && groupadd --system --gid 10001 trackfusionweb-api \
+    && useradd --system --uid 10001 --gid trackfusionweb-api \
+        --home-dir /home/trackfusionweb-api --create-home trackfusionweb-api
 
 COPY --from=node-dependencies /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-dependencies /build/node_modules /app/node_modules
 COPY --from=python-dependencies /opt/venv /opt/venv
 
 WORKDIR /app
-COPY --chown=trackfusion:trackfusion . .
+COPY --chown=trackfusionweb-api:trackfusionweb-api . .
 RUN mkdir -p uploads/temp \
-    && chown -R trackfusion:trackfusion uploads
+    && chown -R trackfusionweb-api:trackfusionweb-api uploads
 
 USER 10001:10001
 

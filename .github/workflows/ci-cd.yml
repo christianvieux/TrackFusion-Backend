@@ -1,4 +1,4 @@
-name: TrackFusionWeb CI/CD
+name: TrackFusionWeb API CI/CD
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: trackfusionweb-${{ github.workflow }}-${{ github.ref }}
+  group: trackfusionweb-api-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
         env:
           POSTGRES_DB: trackfusionweb_db
           POSTGRES_USER: trackfusion
-          POSTGRES_PASSWORD: trackfusion-ci-password
+          POSTGRES_PASSWORD: trackfusionweb-api-ci-password
         ports:
           - 5432:5432
         options: >-
@@ -50,11 +50,11 @@ jobs:
       SESSION_SECRET: ci-session-secret-000000000000000000000000
       JWT_SECRET: ci-jwt-secret-000000000000000000000000000
       JWT_SECRET_PASSWORD_RESET: ci-reset-secret-000000000000000000000000
-      DATABASE_URL: postgresql://trackfusion:trackfusion-ci-password@127.0.0.1:5432/trackfusionweb_db
+      DATABASE_URL: postgresql://trackfusion:trackfusionweb-api-ci-password@127.0.0.1:5432/trackfusionweb_db
       REDIS_URL: redis://127.0.0.1:6379
       PYTHON_EXECUTABLE: python
       AWS_REGION: us-east-1
-      AWS_S3_BUCKET: trackfusionweb-ci-placeholder
+      AWS_S3_BUCKET: trackfusionweb-api-ci-placeholder
       COOKIE_SECURE: "false"
       COOKIE_SAME_SITE: lax
       EMAIL_DELIVERY_ENABLED: "false"
@@ -183,7 +183,7 @@ jobs:
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/TrackFusionWeb-GitHub-Deploy_Role
-          role-session-name: TrackFusionWeb-${{ github.run_id }}
+          role-session-name: TrackFusionWeb-API-${{ github.run_id }}
           allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
 
       - name: Package and upload the release
@@ -219,7 +219,7 @@ jobs:
           command_id="$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name TrackFusionWeb-Deploy \
-            --comment "TrackFusionWeb ${GITHUB_SHA}" \
+            --comment "TrackFusionWeb API ${GITHUB_SHA}" \
             --parameters \
               "BucketName=${DEPLOYMENT_BUCKET},ObjectKey=${{ steps.release.outputs.object_key }},Checksum=${{ steps.release.outputs.checksum }},ReleaseId=${GITHUB_SHA}" \
             --query 'Command.CommandId' \

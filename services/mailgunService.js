@@ -40,9 +40,9 @@ export const mailgunService = {
   async sendTestEmail(email) {
     return this.sendEmail(
       email,
-      'Test Email',
-      'This is a test email from your application',
-      '<h1>Test Email</h1><p>This is a test email from your application</p>'
+      'TrackFusionWeb test email',
+      'This is a test email from TrackFusionWeb.',
+      '<h1>TrackFusionWeb test email</h1><p>This is a test email from TrackFusionWeb.</p>'
     );
   }
 };

@@ -16,7 +16,7 @@ const validEnvironment = {
   REDIS_URL: "redis://127.0.0.1:6379",
   PYTHON_EXECUTABLE: "venv/bin/python",
   AWS_REGION: "us-east-1",
-  AWS_S3_BUCKET: "trackfusion-test-bucket",
+  AWS_S3_BUCKET: "trackfusionweb-api-test-bucket",
   AUDIO_MAX_LENGTH: "900",
   AUDIO_MAX_FILE_SIZE: "300",
   IMAGE_MAX_FILE_SIZE: "50",

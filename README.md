@@ -54,6 +54,12 @@ utils/             Shared validation and security helpers
 init_database.sql  Rerunnable PostgreSQL schema
 ```
 
+## Naming conventions
+
+New names use `TrackFusionWeb` for the product and shared resources, `TrackFusionWeb API` in human-readable API labels, and `trackfusionweb-api` for package, image, and Linux container names. Terraform resource labels remain `snake_case`, JavaScript remains `camelCase`, and established environment-variable names remain unchanged.
+
+Some older identifiers are compatibility-sensitive and intentionally remain unchanged: the `trackfusion` PostgreSQL and EC2 roles, `trackfusionweb_db`, Compose project `trackfusionweb` and its named volumes, `/opt/trackfusion` and `/etc/trackfusion`, Redis session prefix `trackfusion:session:`, AWS profile `trackfusion-local`, GitHub repository `TrackFusion-Backend`, Terraform state addresses, deployment artifact names, and existing AWS resource names. Renaming any of these requires a planned data, host, repository, state, or infrastructure migration.
+
 ## Local development
 
 ### 1. Install prerequisites
@@ -384,7 +390,7 @@ EMAIL_DELIVERY_ENABLED=true
 EMAIL_VALIDATE_MX=true
 MAILGUN_API_KEY=...
 MAILGUN_DOMAIN=...
-MAILGUN_FROM_EMAIL=TrackFusion <noreply@example.com>
+MAILGUN_FROM_EMAIL=TrackFusionWeb <noreply@example.com>
 ```
 
 Restart the API and test delivery before advertising those workflows.

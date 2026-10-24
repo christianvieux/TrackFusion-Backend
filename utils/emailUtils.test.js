@@ -25,7 +25,7 @@ test("rejects malformed email addresses", async () => {
 });
 
 test("enforces an optional domain allowlist", async () => {
-  process.env.EMAIL_ALLOWED_DOMAINS = "trackfusion.example";
+  process.env.EMAIL_ALLOWED_DOMAINS = "trackfusionweb.example";
 
   await expect(isEmailValid("listener@example.com")).resolves.toEqual({
     error: "Email domain not allowed",

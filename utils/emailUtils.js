@@ -15,8 +15,8 @@ function isEnabled(name) {
 
 const getEmailMessage = (email, code, purpose) => {
   const subject = purpose === "registration"
-    ? "Verify your TrackFusion email"
-    : "Reset your TrackFusion password";
+    ? "Verify your TrackFusionWeb email"
+    : "Reset your TrackFusionWeb password";
 
   const baseMessage = {
     to: email,
@@ -29,11 +29,11 @@ const getEmailMessage = (email, code, purpose) => {
         <body style="font-family: Arial, sans-serif; line-height: 1.6;">
           <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
             <header style="margin-bottom: 20px;">
-              <h2 style="color: #333;">TrackFusion</h2>
+              <h2 style="color: #333;">TrackFusionWeb</h2>
             </header>
             ${purpose === "registration" ? 
               `<h3>Verify Your Email Address</h3>
-               <p>Thank you for creating a TrackFusion account. Please enter this verification code to complete your registration:</p>`
+               <p>Thank you for creating a TrackFusionWeb account. Please enter this verification code to complete your registration:</p>`
               : 
               `<h3>Reset Your Password</h3>
                <p>We received a request to reset your password. Please enter this security code to continue:</p>`
@@ -45,15 +45,15 @@ const getEmailMessage = (email, code, purpose) => {
             <p>If you didn't request this, please ignore this email or contact support if you have concerns.</p>
             <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
             <footer style="color: #666; font-size: 12px;">
-              <p>This is an automated message from TrackFusion. Please do not reply to this email.</p>
-              <p>TrackFusion, [Your Business Address]</p>
+              <p>This is an automated message from TrackFusionWeb. Please do not reply to this email.</p>
+              <p>TrackFusionWeb, [Your Business Address]</p>
             </footer>
           </div>
         </body>
         </html>
       `,
       text: `
-        TrackFusion
+        TrackFusionWeb
         
         ${purpose === "registration" ? "Verify Your Email Address" : "Reset Your Password"}
         
@@ -63,7 +63,7 @@ const getEmailMessage = (email, code, purpose) => {
         
         If you didn't request this, please ignore this email or contact support if you have concerns.
         
-        This is an automated message from TrackFusion. Please do not reply to this email.
+        This is an automated message from TrackFusionWeb. Please do not reply to this email.
       `
     }
   };

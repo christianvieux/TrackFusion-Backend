@@ -97,7 +97,7 @@ async function startServer() {
     server.listen(port, process.env.HOST, resolve);
   });
 
-  console.log(`TrackFusion API listening on http://${process.env.HOST}:${port}`);
+  console.log(`TrackFusionWeb API listening on http://${process.env.HOST}:${port}`);
   console.log(`Environment: ${process.env.NODE_ENV}`);
 
   let shuttingDown = false;
@@ -133,6 +133,6 @@ async function startServer() {
 }
 
 startServer().catch((error) => {
-  console.error("Unable to start TrackFusion API:", error);
+  console.error("Unable to start TrackFusionWeb API:", error);
   process.exit(1);
 });

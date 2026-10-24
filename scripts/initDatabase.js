@@ -14,9 +14,9 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 try {
   await pool.query(schema);
-  console.log("TrackFusion database schema initialized successfully");
+  console.log("TrackFusionWeb database schema initialized successfully");
 } catch (error) {
-  console.error("Unable to initialize TrackFusion database:", error.message);
+  console.error("Unable to initialize TrackFusionWeb database:", error.message);
   process.exitCode = 1;
 } finally {
   await pool.end();

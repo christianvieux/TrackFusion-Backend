@@ -26,4 +26,4 @@ for (const check of checks) {
   console.log(`Smoke check passed: GET ${check.path}`);
 }
 
-console.log("TrackFusion API smoke test passed");
+console.log("TrackFusionWeb API smoke test passed");
