@@ -1,0 +1,5 @@
+developer_ssh_cidr = "203.0.113.10/32"
+
+# Optional. AWS sends a confirmation link before this address receives alarms.
+monitoring_alert_email = ""
+

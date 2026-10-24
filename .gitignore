@@ -16,3 +16,15 @@ yarn-error.log*
 
 # Python
 venv/
+__pycache__/
+*.py[cod]
+
+# Terraform local state and working files
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
