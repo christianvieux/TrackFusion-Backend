@@ -1,0 +1,252 @@
+name: TrackFusionWeb CI/CD
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trackfusionweb-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test and audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.15-alpine3.24
+        env:
+          POSTGRES_DB: trackfusionweb_db
+          POSTGRES_USER: trackfusion
+          POSTGRES_PASSWORD: trackfusion-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trackfusion -d trackfusionweb_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4.7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      HOST: 127.0.0.1
+      PORT: 8081
+      REQUEST_BODY_LIMIT: 1mb
+      FRONTEND_URL: http://localhost:3000
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      SESSION_SECRET: ci-session-secret-000000000000000000000000
+      JWT_SECRET: ci-jwt-secret-000000000000000000000000000
+      JWT_SECRET_PASSWORD_RESET: ci-reset-secret-000000000000000000000000
+      DATABASE_URL: postgresql://trackfusion:trackfusion-ci-password@127.0.0.1:5432/trackfusionweb_db
+      REDIS_URL: redis://127.0.0.1:6379
+      PYTHON_EXECUTABLE: python
+      AWS_REGION: us-east-1
+      AWS_S3_BUCKET: trackfusionweb-ci-placeholder
+      COOKIE_SECURE: "false"
+      COOKIE_SAME_SITE: lax
+      EMAIL_DELIVERY_ENABLED: "false"
+      EMAIL_VALIDATE_MX: "false"
+      EXPOSE_OTP_IN_DEVELOPMENT: "false"
+      EXPOSE_RESET_TOKEN_IN_DEVELOPMENT: "false"
+      AUDIO_MAX_LENGTH: 900
+      AUDIO_MAX_FILE_SIZE: 300
+      IMAGE_MAX_FILE_SIZE: 50
+      ALLOWED_AUDIO_TYPES: audio/mp3,audio/wav,audio/mpeg,audio/ogg
+      ALLOWED_IMAGE_TYPES: image/jpeg,image/png
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.16.0
+          cache: npm
+          package-manager-cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Audit production Node dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Run unit and Python syntax tests
+        run: |
+          npm test -- --runInBand
+          python -m compileall -q python
+
+      - name: Verify database schema and live API
+        run: |
+          npm run db:init
+          npm run db:verify
+          npm start > /tmp/trackfusionweb-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8081/health >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" -eq 30 ]]; then
+              cat /tmp/trackfusionweb-api.log
+              exit 1
+            fi
+            sleep 1
+          done
+          npm run smoke
+
+  docker:
+    name: Build production image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: docker build --pull --tag "trackfusionweb-api:${GITHUB_SHA}" .
+
+  terraform:
+    name: Validate Terraform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.17.0
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform -chdir=infrastructure/terraform fmt -check -recursive
+
+      - name: Initialize without the remote backend
+        run: terraform -chdir=infrastructure/terraform init -backend=false -input=false
+
+      - name: Validate configuration
+        run: terraform -chdir=infrastructure/terraform validate -no-color
+
+  deploy:
+    name: Deploy production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [test, docker, terraform]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCOUNT_ID: "020457827871"
+      INSTANCE_ID: i-003f490e99fd1054d
+      DEPLOYMENT_BUCKET: trackfusionweb-audio.s3bucket-020457827871-us-east-1-an
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/TrackFusionWeb-GitHub-Deploy_Role
+          role-session-name: TrackFusionWeb-${{ github.run_id }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Package and upload the release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/trackfusionweb-${GITHUB_SHA}.tar.gz"
+          object_key="deployments/${GITHUB_SHA}.tar.gz"
+          tar \
+            --exclude=.git \
+            --exclude=.github \
+            --exclude=.env \
+            --exclude=.aws \
+            --exclude=.terraform \
+            --exclude=terraform.tfvars \
+            --exclude=node_modules \
+            --exclude=venv \
+            --exclude=coverage \
+            --exclude='**/__pycache__' \
+            --exclude='**/*.pyc' \
+            --exclude=uploads \
+            -czf "$archive" .
+          checksum="$(sha256sum "$archive" | cut -d ' ' -f1)"
+          aws s3 cp "$archive" "s3://${DEPLOYMENT_BUCKET}/${object_key}" --sse AES256
+          printf 'object_key=%s\nchecksum=%s\n' "$object_key" "$checksum" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy through Systems Manager
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          command_id="$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name TrackFusionWeb-Deploy \
+            --comment "TrackFusionWeb ${GITHUB_SHA}" \
+            --parameters \
+              "BucketName=${DEPLOYMENT_BUCKET},ObjectKey=${{ steps.release.outputs.object_key }},Checksum=${{ steps.release.outputs.checksum }},ReleaseId=${GITHUB_SHA}" \
+            --query 'Command.CommandId' \
+            --output text)"
+          printf 'command_id=%s\n' "$command_id" >> "$GITHUB_OUTPUT"
+          if ! aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID"; then
+            aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" || true
+            exit 1
+          fi
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent,Errors:StandardErrorContent}'
+
+      - name: Verify the public endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          public_ip="$(aws ec2 describe-instances \
+            --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)"
+          curl -fsS "http://${public_ip}/health"
+          curl -fsS "http://${public_ip}/auth/session"
+          curl -fsS "http://${public_ip}/tracks/public"
+          curl -fsS "http://${public_ip}/enums/trackAttributes"
+
+      - name: Remove the deployment artifact
+        if: always() && steps.release.outputs.object_key != ''
+        run: aws s3 rm "s3://${DEPLOYMENT_BUCKET}/${{ steps.release.outputs.object_key }}"
