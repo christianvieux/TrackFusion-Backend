@@ -63,11 +63,33 @@ variable "frontend_origins" {
 variable "github_repository" {
   description = "GitHub owner and repository allowed to request deployment credentials."
   type        = string
-  default     = "christianvieux/TrackFusion-Backend"
+  default     = "christianvieux/trackfusionweb-api"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
     error_message = "github_repository must use the owner/repository format."
+  }
+}
+
+variable "github_repository_owner_id" {
+  description = "Immutable GitHub ID for the repository owner, used in the OIDC subject."
+  type        = string
+  default     = "174923870"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_owner_id))
+    error_message = "github_repository_owner_id must contain only digits."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID used in the OIDC subject."
+  type        = string
+  default     = "912834143"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must contain only digits."
   }
 }
 

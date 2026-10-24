@@ -58,7 +58,7 @@ init_database.sql  Rerunnable PostgreSQL schema
 
 New names use `TrackFusionWeb` for the product and shared resources, `TrackFusionWeb API` in human-readable API labels, and `trackfusionweb-api` for package, image, and Linux container names. Terraform resource labels remain `snake_case`, JavaScript remains `camelCase`, and established environment-variable names remain unchanged.
 
-Some older identifiers are compatibility-sensitive and intentionally remain unchanged: the `trackfusion` PostgreSQL and EC2 roles, `trackfusionweb_db`, Compose project `trackfusionweb` and its named volumes, `/opt/trackfusion` and `/etc/trackfusion`, Redis session prefix `trackfusion:session:`, AWS profile `trackfusion-local`, GitHub repository `TrackFusion-Backend`, Terraform state addresses, deployment artifact names, and existing AWS resource names. Renaming any of these requires a planned data, host, repository, state, or infrastructure migration.
+Some older identifiers are compatibility-sensitive and intentionally remain unchanged: the `trackfusion` PostgreSQL and EC2 Linux roles, `trackfusionweb_db`, Compose project `trackfusionweb` and its named volumes, `/opt/trackfusion` and `/etc/trackfusion`, Redis session prefix `trackfusion:session:`, Terraform state addresses, deployment artifact names, and existing AWS resource names. Renaming any of these requires a planned data, host, repository, state, or infrastructure migration.
 
 ## Local development
 
@@ -202,7 +202,7 @@ If a container needs S3, export refreshable credentials into the current shell b
 
 ```bash
 eval "$(aws configure export-credentials \
-  --profile trackfusion-local --format env)"
+  --profile trackfusionweb-admin --format env)"
 docker compose up --build
 ```
 
@@ -220,14 +220,14 @@ docker compose down
 
 ### Local machine
 
-The preferred workflow uses refreshable temporary console credentials:
+The preferred workflow uses refreshable IAM Identity Center credentials:
 
 ```bash
-aws login --profile trackfusion-local --region us-east-1
-aws sts get-caller-identity --profile trackfusion-local
+aws sso login --profile trackfusionweb-admin
+aws sts get-caller-identity --profile trackfusionweb-admin
 ```
 
-Set `AWS_PROFILE=trackfusion-local` locally. Do not add access-key IDs or secret keys to `.env`.
+Set `AWS_PROFILE=trackfusionweb-admin` locally. Do not add access-key IDs or secret keys to `.env`.
 
 ### EC2
 
@@ -262,10 +262,10 @@ cp infrastructure/terraform/terraform.tfvars.example \
   infrastructure/terraform/terraform.tfvars
 # Set developer_ssh_cidr to the trusted public IPv4 address followed by /32.
 
-AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform init
-AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform fmt -check -recursive
-AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform validate
-AWS_PROFILE=trackfusion-local terraform -chdir=infrastructure/terraform plan
+AWS_PROFILE=trackfusionweb-admin terraform -chdir=infrastructure/terraform init
+AWS_PROFILE=trackfusionweb-admin terraform -chdir=infrastructure/terraform fmt -check -recursive
+AWS_PROFILE=trackfusionweb-admin terraform -chdir=infrastructure/terraform validate
+AWS_PROFILE=trackfusionweb-admin terraform -chdir=infrastructure/terraform plan
 ```
 
 The real `terraform.tfvars`, local provider directory, saved plans, and any local state files are ignored. The one-time import identifiers are documented in [`infrastructure/terraform/IMPORTS.md`](infrastructure/terraform/IMPORTS.md); do not rerun imports against the populated state.
@@ -280,7 +280,7 @@ The workflow at [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) run
 - a real production Docker image build;
 - Terraform formatting, offline-backend initialization, and validation.
 
-A deployment runs only after every job succeeds and only for `main` (either a push or a manual dispatch from `main`). GitHub obtains short-lived AWS credentials through OIDC; there are no AWS access keys or SSH private keys in repository secrets. The deployment role can only upload/remove an object under the bucket's `deployments/` prefix, invoke `TrackFusionWeb-Deploy` on the one API instance, read that command's result, and discover the instance's public address.
+A deployment runs only after every job succeeds and only for an explicit manual dispatch from `main`. Pushes and pull requests still run CI but never deploy. GitHub obtains short-lived AWS credentials through OIDC; there are no AWS access keys or SSH private keys in repository secrets. The deployment role can only upload/remove an object under the bucket's `deployments/` prefix, invoke `TrackFusionWeb-Deploy` on the one API instance, read that command's result, and discover the instance's public address.
 
 The SSM document downloads the release on EC2, verifies its SHA-256 checksum, validates required files, synchronizes the release, reruns the idempotent database/configuration checks, restarts the service, and verifies both direct and Nginx health. The workflow removes its S3 artifact even after a failed deployment.
 
@@ -453,7 +453,7 @@ sudo systemctl status redis-server
 ### S3 failure
 
 ```bash
-aws sts get-caller-identity --profile trackfusion-local
+aws sts get-caller-identity --profile trackfusionweb-admin
 npm run aws:verify
 ```
 
