@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: trackfusionweb_db
       POSTGRES_USER: trackfusion
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trackfusion-local-only}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -37,7 +37,7 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 8081
-      DATABASE_URL: postgresql://trackfusion:${POSTGRES_PASSWORD:-trackfusion-local-only}@postgres:5432/trackfusionweb_db
+      DATABASE_URL: postgresql://trackfusion:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/trackfusionweb_db
       REDIS_URL: redis://redis:6379
       PYTHON_EXECUTABLE: /opt/venv/bin/python
       AWS_PROFILE: ""
