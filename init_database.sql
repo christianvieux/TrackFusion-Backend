@@ -1,28 +1,41 @@
 -- ENUMS
-CREATE TYPE public.category_enum AS ENUM (
-  'Music', 'Sound Effect', 'Voice Over', 'Ambience', 'Other'
-);
+DO $$ BEGIN
+  CREATE TYPE public.category_enum AS ENUM (
+    'Music', 'Sound Effect', 'Voice Over', 'Ambience', 'Other'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE public.genre_enum AS ENUM (
-  'Pop', 'Rock', 'Hip Hop', 'Electronic', 'Classical', 'Jazz',
-  'R&B', 'Country', 'Folk', 'Metal', 'Blues', 'Reggae',
-  'World', 'Latin', 'Alternative', 'Indie'
-);
+DO $$ BEGIN
+  CREATE TYPE public.genre_enum AS ENUM (
+    'Pop', 'Rock', 'Hip Hop', 'Electronic', 'Classical', 'Jazz',
+    'R&B', 'Country', 'Folk', 'Metal', 'Blues', 'Reggae',
+    'World', 'Latin', 'Alternative', 'Indie'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE public.mood_enum AS ENUM (
-  'Happy', 'Sad', 'Energetic', 'Calm', 'Angry', 'Romantic',
-  'Dark', 'Epic', 'Funny', 'Dramatic', 'Mysterious',
-  'Peaceful', 'Tense'
-);
+DO $$ BEGIN
+  CREATE TYPE public.mood_enum AS ENUM (
+    'Happy', 'Sad', 'Energetic', 'Calm', 'Angry', 'Romantic',
+    'Dark', 'Epic', 'Funny', 'Dramatic', 'Mysterious',
+    'Peaceful', 'Tense'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 -- SEQUENCES
-CREATE SEQUENCE users_id_seq START 1;
-CREATE SEQUENCE tracks_id_seq START 1;
-CREATE SEQUENCE playlists_id_seq START 1;
-CREATE SEQUENCE track_interactions_id_seq START 1;
-CREATE SEQUENCE user_favorite_tracks_id_seq START 1;
-CREATE SEQUENCE user_tokens_id_seq START 1;
-CREATE SEQUENCE otp_codes_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS users_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS tracks_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS playlists_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS track_interactions_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS user_favorite_tracks_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS user_tokens_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS password_reset_tokens_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS otp_codes_id_seq START 1;
 
 -- TABLES
 CREATE TABLE IF NOT EXISTS public.users (
@@ -119,6 +132,17 @@ CREATE TABLE IF NOT EXISTS public.user_tokens (
   CONSTRAINT user_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS public.password_reset_tokens (
+  id integer NOT NULL DEFAULT nextval('password_reset_tokens_id_seq'::regclass),
+  user_id integer NOT NULL,
+  token text NOT NULL,
+  used boolean NOT NULL DEFAULT false,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id),
+  CONSTRAINT password_reset_tokens_token_key UNIQUE (token),
+  CONSTRAINT password_reset_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS public.otp_codes (
   id integer NOT NULL DEFAULT nextval('otp_codes_id_seq'::regclass),
   email varchar(255) NOT NULL,
@@ -139,4 +163,11 @@ ALTER SEQUENCE playlists_id_seq OWNED BY playlists.id;
 ALTER SEQUENCE track_interactions_id_seq OWNED BY track_interactions.id;
 ALTER SEQUENCE user_favorite_tracks_id_seq OWNED BY user_favorite_tracks.id;
 ALTER SEQUENCE user_tokens_id_seq OWNED BY user_tokens.id;
+ALTER SEQUENCE password_reset_tokens_id_seq OWNED BY password_reset_tokens.id;
 ALTER SEQUENCE otp_codes_id_seq OWNED BY otp_codes.id;
+
+-- INDEXES
+CREATE INDEX IF NOT EXISTS tracks_creator_id_idx ON public.tracks (creator_id);
+CREATE INDEX IF NOT EXISTS track_interactions_user_id_idx ON public.track_interactions (user_id);
+CREATE INDEX IF NOT EXISTS password_reset_tokens_user_id_idx ON public.password_reset_tokens (user_id);
+CREATE INDEX IF NOT EXISTS otp_codes_lookup_idx ON public.otp_codes (email, purpose, created_at DESC);

@@ -1,193 +1,138 @@
-//index.js
-
-// Essential imports first
 import dotenv from "dotenv";
+import { initializeEnvironment, validateEnvironment } from "./utils/loadEnv.js";
+
 dotenv.config();
 
-// Initialize environment before other imports
-import { initializeEnvironment } from "./utils/loadEnv.js";
-const fallbackPorts = [process.env.PORT, 8081, 8082, 3000];
-
 async function startServer() {
+  await initializeEnvironment();
+  const { port } = validateEnvironment();
+
   const http = (await import("http")).default;
   const express = (await import("express")).default;
+  const session = (await import("express-session")).default;
+  const cookieParser = (await import("cookie-parser")).default;
+  const cors = (await import("cors")).default;
+  const helmet = (await import("helmet")).default;
+  const { createClient } = await import("redis");
+  const { RedisStore } = await import("connect-redis");
+  const { default: databasePool, verifyDatabaseConnection } = await import("./services/dbService.js");
+
+  await verifyDatabaseConnection();
+  console.log("PostgreSQL connection verified");
+
+  const redisClient = createClient({ url: process.env.REDIS_URL });
+  redisClient.on("error", (error) => {
+    console.error("Redis client error:", error.message);
+  });
+  await redisClient.connect();
+  console.log("Redis connection verified");
+
+  const { corsOptions } = await import("./middlewares/corsOptions.js");
+  const { default: sessionConfig } = await import("./middlewares/sessionConfig.js");
+  const { apiLimiter } = await import("./middlewares/limiterConfig.js");
+  const { default: authRoutes } = await import("./routes/authRoutes.js");
+  const { default: userRoutes } = await import("./routes/userRoutes.js");
+  const { default: trackRoutes } = await import("./routes/trackRoutes.js");
+  const { default: otpRoutes } = await import("./routes/otpRoutes.js");
+  const { default: enumRoutes } = await import("./routes/enumRoutes.js");
+  const { default: audioRoutes } = await import("./routes/audioRoutes.js");
+  const { default: publicRoutes } = await import("./routes/publicRoutes.js");
+  const { default: awsRoutes } = await import("./routes/awsRoutes.js");
+  const { default: uploadRoutes } = await import("./routes/uploadRoutes.js");
+  const { audioQueue, cleanupQueue, audioAnalysisQueue } = await import("./queue/audioQueue.js");
+  const { trackUploadQueue, profilePictureUploadQueue } = await import("./queue/uploadQueue.js");
+  const { errorHandler } = await import("./middlewares/errorHandler.js");
+
   const app = express();
-  
-  // Try different ports
-  const tryPort = async (port) => {
-    try {
-      const server = http.createServer(app);
-      await new Promise((resolve, reject) => {
-        server
-          .listen(port, "0.0.0.0")
-          .once("listening", () => resolve(server))
-          .once("error", (err) => {
-            if (err.code === "EADDRINUSE") {
-              server.close();
-              reject(err);
-            }
-          });
-      });
-      const apiUrl = `http://localhost:${port}`;
-      console.log(
-        `🚀 Server successfully started - Listening on port ${port} (0.0.0.0)`
-      );
-      console.log(`Environment: ${process.env.NODE_ENV}`);
-      console.log(`API base URL: ${apiUrl}`);
-      console.log(`deployment version 2.7.0`);
-      return true;
-    } catch (err) {
-      if (err.code === "EADDRINUSE") {
-        console.log(`Port ${port} in use, trying next port...`);
-        return false;
-      }
-      throw err;
-    }
+  const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "1mb";
+
+  app.set("trust proxy", process.env.NODE_ENV === "production" ? 1 : false);
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'"],
+          imgSrc: ["'self'", "data:", "blob:"],
+          connectSrc: ["'self'"],
+        },
+      },
+    }),
+  );
+  app.use(cors(corsOptions));
+  app.use(apiLimiter);
+  app.use(cookieParser());
+  app.use(session({
+    ...sessionConfig,
+    store: new RedisStore({
+      client: redisClient,
+      prefix: "trackfusion:session:",
+    }),
+  }));
+  app.use(express.json({ limit: requestBodyLimit }));
+  app.use(express.urlencoded({ limit: requestBodyLimit, extended: true }));
+
+  app.use("/public", publicRoutes);
+  app.use("/auth", authRoutes);
+  app.use("/users", userRoutes);
+  app.use("/tracks", trackRoutes);
+  app.use("/otp", otpRoutes);
+  app.use("/enums", enumRoutes);
+  app.use("/audio", audioRoutes);
+  app.use("/aws", awsRoutes);
+  app.use("/upload", uploadRoutes);
+
+  app.get("/health", (req, res) => {
+    res.status(200).json({ status: "healthy" });
+  });
+
+  app.use(errorHandler);
+
+  const server = http.createServer(app);
+  server.timeout = 120000;
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, process.env.HOST, resolve);
+  });
+
+  console.log(`TrackFusion API listening on http://${process.env.HOST}:${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV}`);
+
+  let shuttingDown = false;
+  const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received; shutting down gracefully`);
+
+    await new Promise((resolve) => server.close(resolve));
+    const resources = [
+      audioQueue,
+      cleanupQueue,
+      audioAnalysisQueue,
+      trackUploadQueue,
+      profilePictureUploadQueue,
+    ];
+    await Promise.allSettled([
+      ...resources.map((queue) => queue.close()),
+      redisClient.quit(),
+      databasePool.end(),
+    ]);
+    console.log("Shutdown complete");
   };
 
-  try {
-    // Load environment variables first
-    try {
-      await initializeEnvironment();
-      console.log("Environment initialized successfully");
-    } catch (error) {
-      console.error("Environment initialization failed:", error);
-      console.log("Continuing with default environment settings");
-    }
+  process.once("SIGINT", () => {
+    shutdown("SIGINT").then(() => process.exit(0));
+  });
+  process.once("SIGTERM", () => {
+    shutdown("SIGTERM").then(() => process.exit(0));
+  });
 
-    // Import other modules
-    const bodyParser = (await import("body-parser")).default;
-    const session = (await import("express-session")).default;
-    const cookieParser = (await import("cookie-parser")).default;
-    const cors = (await import("cors")).default;
-    const helmet = (await import("helmet")).default;
-    const rateLimit = (await import("express-rate-limit")).default;
-
-    // Dynamic imports for routes and services
-    const { corsOptions } = await import("./middlewares/corsOptions.js");
-    const { default: sessionConfig } = await import(
-      "./middlewares/sessionConfig.js"
-    );
-    const { default: authRoutes } = await import("./routes/authRoutes.js");
-    const { default: userRoutes } = await import("./routes/userRoutes.js");
-    const { default: trackRoutes } = await import("./routes/trackRoutes.js");
-    const { default: otpRoutes } = await import("./routes/otpRoutes.js");
-    const { default: enumRoutes } = await import("./routes/enumRoutes.js");
-    const { default: audioRoutes } = await import("./routes/audioRoutes.js");
-    const { default: publicRoutes } = await import("./routes/publicRoutes.js");
-    const { default: awsRoutes } = await import("./routes/awsRoutes.js");
-    const { default: uploadRoutes } = await import("./routes/uploadRoutes.js");
-    const { sendTestEmail } = await import("./utils/emailUtils.js");
-    const { audioQueue, cleanupQueue } = await import("./queue/audioQueue.js");
-    const { errorHandler } = await import("./middlewares/errorHandler.js");
-
-    // Rate limiter
-    // const limiter = rateLimit({
-    //   windowMs: 15 * 60 * 1000,
-    //   max: 100,
-    //   standardHeaders: true,
-    //   legacyHeaders: false,
-    // });
-
-    app.set('trust proxy', 1); // trust first proxy
-    app.use(
-      helmet({
-        contentSecurityPolicy: {
-          directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'"],
-            styleSrc: ["'self'"],
-            imgSrc: ["'self'", "data:", "blob:"],
-            connectSrc: ["'self'"],
-          },
-        },
-      })
-    );
-    app.use(cookieParser());
-    // app.use(limiter);
-    app.use(session(sessionConfig)); // session config
-
-    // Basic cors middleware
-    // app.use(cors(corsOptions));
-    app.use(cors(corsOptions));
-
-    // Increase body parser limits
-    const size = "1000mb";
-    app.use(express.json({ limit: size }));
-    app.use(express.urlencoded({ limit: size, extended: true }));
-    app.use(express.raw({ limit: size }));
-
-    // Update body-parser limits
-    app.use(bodyParser.json({ limit: size }));
-    app.use(bodyParser.urlencoded({ limit: size, extended: true }));
-    app.use(bodyParser.raw({ limit: size }));
-
-    // Routes
-    app.use("/public", publicRoutes);
-    app.use("/auth", authRoutes);
-    app.use("/users", userRoutes);
-    app.use("/tracks", trackRoutes);
-    app.use("/otp", otpRoutes);
-    app.use("/enums", enumRoutes);
-    app.use("/audio", audioRoutes);
-    app.use("/aws", awsRoutes);
-    app.use("/upload", uploadRoutes);
-
-    // Health check for load balancer
-    app.get("/health", (req, res) => {
-      res.status(200).json({ status: "healthy" });
-    });
-
-    app.post('/test', (req, res) => {
-      res.send('Success');
-    });
-
-    // Error handling
-    app.use(errorHandler);
-
-    // Graceful shutdown
-    process.on("SIGINT", async () => {
-      console.log("Gracefully shutting down...");
-
-      // Close server first
-      server.close(async () => {
-        console.log("Server closed");
-
-        // Then close queues
-        await Promise.all([audioQueue.close(), cleanupQueue.close()]);
-
-        process.exit(0);
-      });
-
-      // Force close after timeout
-      setTimeout(() => {
-        console.error(
-          "Could not close connections in time, forcefully shutting down"
-        );
-        process.exit(1);
-      }, 30000);
-    });
-
-    // Log unhandled rejections
-    process.on("unhandledRejection", (error) => {
-      console.error("Unhandled rejection:", error);
-    });
-
-    const server = http.createServer(app); // Create an HTTP server
-    // Server timeout
-    server.timeout = 120000; // 2 minutes
-    // Start the server
-    for (const port of fallbackPorts) {
-      if (await tryPort(port)) {
-        break;
-      }
-    }
-
-    sendTestEmail("davie10863@hotmail.com")
-    console.log("Test email sent")
-  } catch (error) {
-    console.error("Critical server error:", error);
-  }
+  return { app, server };
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error("Unable to start TrackFusion API:", error);
+  process.exit(1);
+});

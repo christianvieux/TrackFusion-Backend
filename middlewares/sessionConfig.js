@@ -4,7 +4,7 @@ import { sessionCookieOptions } from "../utils/cookieOptions.js";
 dotenv.config();
 
 export default {
-  secret: process.env.SESSION_SECRET || "your-secret-key",
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   name: 'sessionId',
