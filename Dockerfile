@@ -1,4 +1,4 @@
-FROM node:24.16.0-bookworm-slim AS node-dependencies
+FROM node:26.12.0-bookworm-slim AS node-dependencies
 
 WORKDIR /build
 COPY package.json package-lock.json ./
