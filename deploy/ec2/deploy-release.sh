@@ -22,27 +22,20 @@ fi
 
 app_directory=/opt/trackfusion/api
 service_name=trackfusionweb-api
+health_check_script="${staging_directory}/deploy/ec2/check-api-health.sh"
 backup_directory=
 service_stopped=false
 deployment_started=false
 
 wait_for_health() {
-  for attempt in {1..30}; do
-    if curl -fsS --connect-timeout 2 --max-time 5 \
-      http://127.0.0.1:8081/health >/dev/null \
-      && curl -fsS --connect-timeout 2 --max-time 5 \
-        http://127.0.0.1/health >/dev/null; then
-      return 0
-    fi
-    sleep 1
-  done
-  return 1
+  bash "${health_check_script}" 30
 }
 
 for required_path in \
   "${staging_directory}/package-lock.json" \
   "${staging_directory}/requirements.txt" \
   "${staging_directory}/deploy/ec2/backup-release.sh" \
+  "${staging_directory}/deploy/ec2/check-api-health.sh" \
   "${staging_directory}/deploy/ec2/configure-app.sh" \
   "${staging_directory}/deploy/ec2/prune-release-backups.sh" \
   "${staging_directory}/deploy/ec2/rollback-release.sh"; do
@@ -107,6 +100,7 @@ rsync -a --delete \
   "${staging_directory}/" "${app_directory}/"
 
 bash "${app_directory}/deploy/ec2/configure-app.sh"
+health_check_script="${app_directory}/deploy/ec2/check-api-health.sh"
 
 if ! wait_for_health; then
   echo "ERROR: post-installation application or Nginx health check failed." >&2

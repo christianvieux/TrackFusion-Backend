@@ -62,6 +62,13 @@ test("rejects an invalid port", () => {
 test("requires strong secrets in production", () => {
   process.env.NODE_ENV = "production";
   process.env.SESSION_SECRET = "too-short";
+  process.env.JWT_SECRET = "j".repeat(32);
+  process.env.JWT_SECRET_PASSWORD_RESET = "r".repeat(32);
+  process.env.FRONTEND_URL = "https://trackfusionweb.vercel.app";
+  process.env.CORS_ALLOWED_ORIGINS = "https://trackfusionweb.vercel.app";
+  process.env.COOKIE_SECURE = "true";
+  process.env.EXPOSE_OTP_IN_DEVELOPMENT = "false";
+  process.env.EXPOSE_RESET_TOKEN_IN_DEVELOPMENT = "false";
 
   expect(() => validateEnvironment()).toThrow(
     "SESSION_SECRET must be at least 32 characters in production",
@@ -76,8 +83,35 @@ test("allows production startup with email-dependent features disabled", () => {
   process.env.EMAIL_DELIVERY_ENABLED = "false";
   process.env.EXPOSE_OTP_IN_DEVELOPMENT = "false";
   process.env.EXPOSE_RESET_TOKEN_IN_DEVELOPMENT = "false";
+  process.env.FRONTEND_URL = "https://trackfusionweb.vercel.app";
+  process.env.CORS_ALLOWED_ORIGINS = "https://trackfusionweb.vercel.app";
+  process.env.COOKIE_SECURE = "true";
 
   expect(validateEnvironment()).toEqual({ port: 8081 });
+});
+
+test("rejects insecure cookies in production", () => {
+  process.env.NODE_ENV = "production";
+  process.env.SESSION_SECRET = "s".repeat(32);
+  process.env.JWT_SECRET = "j".repeat(32);
+  process.env.JWT_SECRET_PASSWORD_RESET = "r".repeat(32);
+  process.env.FRONTEND_URL = "https://trackfusionweb.vercel.app";
+  process.env.CORS_ALLOWED_ORIGINS = "https://trackfusionweb.vercel.app";
+  process.env.COOKIE_SECURE = "false";
+  process.env.EXPOSE_OTP_IN_DEVELOPMENT = "false";
+  process.env.EXPOSE_RESET_TOKEN_IN_DEVELOPMENT = "false";
+
+  expect(() => validateEnvironment()).toThrow(
+    "COOKIE_SECURE must be true in production",
+  );
+});
+
+test("requires exact CORS origins without paths", () => {
+  process.env.CORS_ALLOWED_ORIGINS = "https://trackfusionweb.vercel.app/app";
+
+  expect(() => validateEnvironment()).toThrow(
+    "CORS_ALLOWED_ORIGINS must contain exact HTTP(S) origins without paths",
+  );
 });
 
 test("rejects malformed service URLs", () => {

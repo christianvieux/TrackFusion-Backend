@@ -1,6 +1,6 @@
 # TrackFusionWeb Backend Modernization Handoff
 
-Last reconstructed: October 24, 2026
+Last updated: October 25, 2026
 
 This document separates repository evidence from operational claims. Re-check the working tree and relevant services before relying on it; do not treat it as a substitute for tests or a Terraform plan.
 
@@ -9,25 +9,16 @@ This document separates repository evidence from operational claims. Re-check th
 - Do not push, merge, deploy, or change live AWS infrastructure without the user's explicit approval.
 - Preserve the canonical `TrackFusionWeb-*` AWS naming pattern.
 - Do not commit `.env`, `terraform.tfvars`, Terraform state, AWS credentials, private keys, database passwords, or Mailgun credentials.
-- Review the large existing working tree before editing. Nearly all modernization changes are currently uncommitted and belong to the user.
+- Review the working tree before editing and preserve unrelated user changes.
 - Prefer small, verifiable steps and explain decisions using this codebase.
 
 ## Git state
 
 - Repository: `trackfusionweb-api`
-- Branch: `May_2026`
-- `HEAD`: `1d065db3e06e719995f34f37d6d3bf9d5f688163`
-- Latest commit: `fix: update API routes and health check endpoints to remove '/api' prefix` (May 10, 2026)
-- The modernization work is not represented by later commits. It exists as a large dirty working tree: dozens of modified tracked files plus new Docker, deployment, Terraform, CI, documentation, scripts, and tests.
-- No commit, push, merge, or GitHub-hosted workflow run was performed during the modernization session.
-
-Recent commits before the working-tree modernization:
-
-1. `1d065db` — route and health-prefix update
-2. `3b59020` — cookie centralization and CORS changes
-3. `7b1b5e7` — removed the old App Runner workflow
-4. `57d166d` — earlier dynamic CORS handling
-5. `3821854` — Mailgun integration and SendGrid removal
+- Phase A branch: `feat/production-https`
+- Base: `main` at `341fdad` (`Merge pull request #14 from christianvieux/fix/production-deployment-hardening`)
+- The modernization, CI/CD, and guarded backup/rollback work is committed on `main`.
+- The HTTPS branch is for repository implementation only. It must not be pushed, merged, deployed, or applied to AWS without the owner's next approval.
 
 ## Architecture verified from code
 
@@ -88,7 +79,17 @@ Repository evidence exists for:
 - private S3 access verification script;
 - checksum-verified SSM deployment document in Terraform.
 
-The README and previous-session notes report a working EC2 deployment with PostgreSQL, Redis, Nginx, S3 role access, and public smoke tests. This was not queried or changed during this reconstruction because live AWS operations require explicit approval.
+Read-only AWS and host inspection on October 25, 2026 verified:
+
+- instance `i-003f490e99fd1054d` is running Ubuntu 24.04 as a managed SSM instance;
+- the instance uses `TrackFusionWeb-API_Role`, `t3.small`, and public IP `3.91.170.191`;
+- no Elastic IP is allocated in the account;
+- the attached security group exposes only public 80/443 and developer-restricted 22; 8081 listens on loopback;
+- Nginx and `trackfusionweb-api` are active, and the installed HTTP-only Nginx file matches the tracked file;
+- Certbot is not installed, no certificate is present, and `certbot.timer` does not exist;
+- `api.trackfusionweb.com` currently resolves to the temporary public IP and HTTP health returns `200`.
+
+No live resource, host configuration, DNS record, or certificate was changed by that audit.
 
 ### Phase 3 — documentation
 
@@ -150,7 +151,7 @@ Implemented as local configuration under `infrastructure/terraform`:
 - encrypted S3 remote backend with native lockfile support;
 - provider dependency lock file and one-time import documentation.
 
-Local formatting is clean. The README reports that existing resources were imported and the final live plan converged to no changes. Do not rerun imports or plan/apply against AWS without explicit approval and current credentials.
+The existing resources remain imported. The HTTPS branch intentionally adds an Elastic IP and association so the IONOS A record survives EC2 stop/start. A read-only, unlocked plan on October 25, 2026 reported exactly `2 to add, 0 to change, 0 to destroy`: the Elastic IP and its association to the existing instance. Nothing was applied. Do not rerun imports or apply without explicit approval and current credentials.
 
 ### Phase 6 — CI/CD and final improvements
 
@@ -162,14 +163,13 @@ Implemented locally:
 - checksum-verified S3 artifact deployment through SSM;
 - `.github/dependabot.yml` for npm, pip, Docker, Terraform, and Actions.
 
-Still incomplete:
+Current HTTPS work on `feat/production-https` adds tracked bootstrap/TLS Nginx configuration, one-time Certbot activation, automatic renewal integration, HTTPS-aware deployment/rollback checks, public HTTPS workflow smoke checks, and weekly certificate-expiry monitoring. Production activation remains incomplete and requires the separately approved rollout in `docs/PRODUCTION_HTTPS_ROLLOUT.md`.
 
-- workflow and Dependabot files are untracked and have never run on GitHub;
-- the GitHub `production` environment and its protection rules need owner review;
-- no commit/push should occur without the user's direction;
-- API domain/HTTPS is not configured;
-- production Mailgun credentials/domain are not configured;
-- optional monitoring notification email is not configured.
+Other incomplete external work:
+
+- review the GitHub `production` environment and its protection rules;
+- configure production Mailgun credentials/domain if email flows should be enabled;
+- configure and confirm the optional monitoring notification email if desired.
 
 ## Current verification commands
 
@@ -203,8 +203,8 @@ Do not add `--volumes` to `docker compose down` unless deleting local PostgreSQL
 - The real `.env` and `infrastructure/terraform/terraform.tfvars` are intentionally ignored. Never print or commit them.
 - A local database password was previously pasted into conversation history. Rotate it before treating the local environment as clean.
 - Routine AWS administration should not use the account root identity.
-- The EC2 public IPv4 address is documented as ephemeral; HTTPS needs a stable address and user-owned API hostname.
+- The current EC2 public IPv4 address remains ephemeral until the reviewed Elastic IP plan is applied; the API hostname already exists at IONOS.
 
 ## Next action
 
-Continue at the final Phase 4 packaging check. The full build/Compose/smoke path passed, but the first image included the local Terraform provider because `infrastructure` was not ignored. Rebuild with the corrected `.dockerignore`, verify the much smaller context/image, and do not publish the original local image. Docker access currently requires `sudo` unless the user intentionally configures Docker-group membership. Do not push the CI workflow without the user's approval.
+Complete local Phase A validation, review and commit `feat/production-https`, then stop. Phase B requires fresh approval before Terraform apply, IONOS DNS changes, certificate issuance, host configuration, branch push/merge, or production workflow execution. Follow `docs/PRODUCTION_HTTPS_ROLLOUT.md` in order after that approval.

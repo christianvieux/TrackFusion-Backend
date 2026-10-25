@@ -11,6 +11,9 @@ app_directory=/opt/trackfusion/api
 config_directory=/etc/trackfusion
 service_name=trackfusionweb-api
 requested_backup=${1:-}
+script_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+health_check_source="${script_directory}/check-api-health.sh"
+health_check_script=
 
 if [[ -z ${requested_backup} ]]; then
   echo "ERROR: a backup directory is required for rollback." >&2
@@ -49,6 +52,17 @@ for command_name in curl nginx rsync systemctl; do
     exit 1
   fi
 done
+if [[ ! -f ${health_check_source} ]]; then
+  echo "ERROR: rollback health-check helper is missing: ${health_check_source}" >&2
+  exit 1
+fi
+health_check_script=$(mktemp /tmp/trackfusionweb-rollback-health.XXXXXX)
+install -o root -g root -m 0755 "${health_check_source}" "${health_check_script}"
+# shellcheck disable=SC2329 # Invoked by the EXIT trap.
+cleanup_health_check() {
+  rm -f -- "${health_check_script}"
+}
+trap cleanup_health_check EXIT
 
 restore_path() {
   local source_path=$1
@@ -65,6 +79,18 @@ restore_path() {
   fi
 }
 
+restore_optional_path() {
+  local source_path=$1
+  local destination_path=$2
+
+  if [[ -e ${source_path} || -L ${source_path} || -f ${source_path}.absent ]]; then
+    restore_path "${source_path}" "${destination_path}"
+  else
+    # Backups created before HTTPS support did not capture these paths.
+    rm -f -- "${destination_path}"
+  fi
+}
+
 echo "Restoring the previously working application release." >&2
 systemctl stop "${service_name}" 2>/dev/null || true
 if systemctl is-active --quiet "${service_name}"; then
@@ -77,6 +103,7 @@ rsync -a --delete --exclude='uploads/' \
 
 echo "Restoring production configuration and service definitions." >&2
 install -d -o root -g root -m 0700 "${config_directory}"
+install -d -o root -g root -m 0755 /etc/nginx/snippets
 rsync -a --delete "${backup_directory}/config/" "${config_directory}/"
 restore_path "${backup_directory}/host/systemd/trackfusionweb-api.service" \
   /etc/systemd/system/trackfusionweb-api.service
@@ -84,6 +111,14 @@ restore_path "${backup_directory}/host/nginx/sites-available/trackfusionweb-api"
   /etc/nginx/sites-available/trackfusionweb-api
 restore_path "${backup_directory}/host/nginx/sites-enabled/trackfusionweb-api" \
   /etc/nginx/sites-enabled/trackfusionweb-api
+restore_optional_path "${backup_directory}/host/nginx/snippets/trackfusionweb-api-proxy.conf" \
+  /etc/nginx/snippets/trackfusionweb-api-proxy.conf
+restore_optional_path "${backup_directory}/host/nginx/sites-available/trackfusionweb-api-tls" \
+  /etc/nginx/sites-available/trackfusionweb-api-tls
+restore_optional_path "${backup_directory}/host/nginx/sites-enabled/trackfusionweb-api-tls" \
+  /etc/nginx/sites-enabled/trackfusionweb-api-tls
+restore_optional_path "${backup_directory}/host/nginx/trackfusionweb-api-https-enabled" \
+  /etc/nginx/trackfusionweb-api-https-enabled
 restore_path "${backup_directory}/host/nginx/sites-enabled/default" \
   /etc/nginx/sites-enabled/default
 
@@ -98,16 +133,10 @@ systemctl enable "${service_name}" >/dev/null
 systemctl restart "${service_name}"
 systemctl reload nginx
 
-for attempt in {1..30}; do
-  if curl -fsS --connect-timeout 2 --max-time 5 \
-    http://127.0.0.1:8081/health >/dev/null \
-    && curl -fsS --connect-timeout 2 --max-time 5 \
-      http://127.0.0.1/health >/dev/null; then
-    echo "Rollback health checks passed." >&2
-    exit 0
-  fi
-  sleep 1
-done
+if bash "${health_check_script}" 30; then
+  echo "Rollback health checks passed." >&2
+  exit 0
+fi
 
 systemctl status "${service_name}" --no-pager >&2 || true
 journalctl -u "${service_name}" -n 100 --no-pager >&2 || true

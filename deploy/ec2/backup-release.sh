@@ -80,6 +80,7 @@ install -d -o root -g root -m 0700 \
   "${partial_directory}/release" \
   "${partial_directory}/config" \
   "${partial_directory}/host/systemd" \
+  "${partial_directory}/host/nginx/snippets" \
   "${partial_directory}/host/nginx/sites-available" \
   "${partial_directory}/host/nginx/sites-enabled"
 
@@ -112,6 +113,14 @@ capture_path /etc/nginx/sites-available/trackfusionweb-api \
   "${partial_directory}/host/nginx/sites-available/trackfusionweb-api"
 capture_path /etc/nginx/sites-enabled/trackfusionweb-api \
   "${partial_directory}/host/nginx/sites-enabled/trackfusionweb-api"
+capture_path /etc/nginx/snippets/trackfusionweb-api-proxy.conf \
+  "${partial_directory}/host/nginx/snippets/trackfusionweb-api-proxy.conf"
+capture_path /etc/nginx/sites-available/trackfusionweb-api-tls \
+  "${partial_directory}/host/nginx/sites-available/trackfusionweb-api-tls"
+capture_path /etc/nginx/sites-enabled/trackfusionweb-api-tls \
+  "${partial_directory}/host/nginx/sites-enabled/trackfusionweb-api-tls"
+capture_path /etc/nginx/trackfusionweb-api-https-enabled \
+  "${partial_directory}/host/nginx/trackfusionweb-api-https-enabled"
 capture_path /etc/nginx/sites-enabled/default \
   "${partial_directory}/host/nginx/sites-enabled/default"
 

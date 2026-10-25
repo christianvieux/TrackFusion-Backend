@@ -34,6 +34,17 @@ variable "subnet_id" {
   default     = "subnet-080a5c11707ec23fd"
 }
 
+variable "api_domain_name" {
+  description = "Public DNS name configured at IONOS for the TrackFusionWeb API."
+  type        = string
+  default     = "api.trackfusionweb.com"
+
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$", var.api_domain_name))
+    error_message = "api_domain_name must be a lowercase fully qualified domain name."
+  }
+}
+
 variable "key_name" {
   description = "Existing EC2 key pair used for restricted administrative SSH."
   type        = string
@@ -109,4 +120,3 @@ variable "monitoring_alert_email" {
     error_message = "monitoring_alert_email must be empty or a valid email address."
   }
 }
-

@@ -77,6 +77,30 @@ function validateUrl(name, allowedProtocols) {
   if (!allowedProtocols.includes(value.protocol)) {
     throw new Error(`${name} must use ${allowedProtocols.join(" or ")}`);
   }
+
+  return value;
+}
+
+function validateOrigin(name, origin) {
+  let value;
+  try {
+    value = new URL(origin);
+  } catch {
+    throw new Error(`${name} must contain valid HTTP(S) origins`);
+  }
+
+  if (
+    !["http:", "https:"].includes(value.protocol) ||
+    value.username ||
+    value.password ||
+    value.pathname !== "/" ||
+    value.search ||
+    value.hash
+  ) {
+    throw new Error(`${name} must contain exact HTTP(S) origins without paths`);
+  }
+
+  return value;
 }
 
 export function validateEnvironment() {
@@ -127,18 +151,13 @@ export function validateEnvironment() {
     }
   }
 
-  validateUrl("FRONTEND_URL", ["http:", "https:"]);
+  const frontendUrl = validateUrl("FRONTEND_URL", ["http:", "https:"]);
   validateUrl("DATABASE_URL", ["postgres:", "postgresql:"]);
   validateUrl("REDIS_URL", ["redis:", "rediss:"]);
 
-  for (const origin of process.env.CORS_ALLOWED_ORIGINS.split(",")) {
-    try {
-      const parsedOrigin = new URL(origin.trim());
-      if (!["http:", "https:"].includes(parsedOrigin.protocol)) throw new Error();
-    } catch {
-      throw new Error("CORS_ALLOWED_ORIGINS must contain valid HTTP(S) origins");
-    }
-  }
+  const corsOrigins = process.env.CORS_ALLOWED_ORIGINS.split(",").map((origin) =>
+    validateOrigin("CORS_ALLOWED_ORIGINS", origin.trim()),
+  );
 
   const emailDeliveryEnabled = process.env.EMAIL_DELIVERY_ENABLED === "true";
   if (emailDeliveryEnabled) {
@@ -161,6 +180,16 @@ export function validateEnvironment() {
   }
 
   if (process.env.NODE_ENV === "production") {
+    if (process.env.COOKIE_SECURE !== "true") {
+      throw new Error("COOKIE_SECURE must be true in production");
+    }
+    if (frontendUrl.protocol !== "https:") {
+      throw new Error("FRONTEND_URL must use https: in production");
+    }
+    if (corsOrigins.some((origin) => origin.protocol !== "https:")) {
+      throw new Error("CORS_ALLOWED_ORIGINS must use https: in production");
+    }
+
     for (const name of ["SESSION_SECRET", "JWT_SECRET", "JWT_SECRET_PASSWORD_RESET"]) {
       if (process.env[name].length < 32) {
         throw new Error(`${name} must be at least 32 characters in production`);

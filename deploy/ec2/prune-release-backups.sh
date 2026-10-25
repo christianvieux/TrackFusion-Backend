@@ -28,6 +28,6 @@ for ((index = keep_count; index < ${#backup_names[@]}; index += 1)); do
   backup_name=${backup_names[index]}
   if [[ ${backup_name} =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{40}$ ]]; then
     echo "Removing expired release backup: ${backup_name}" >&2
-    rm -rf -- "${backup_root}/${backup_name}"
+    rm -rf -- "${backup_root:?}/${backup_name}"
   fi
 done
