@@ -280,7 +280,7 @@ The workflow at [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) run
 - a real production Docker image build;
 - Terraform formatting, offline-backend initialization, and validation.
 
-A deployment runs only after every job succeeds and only for an explicit manual dispatch from `main`. Pushes and pull requests still run CI but never deploy. GitHub obtains short-lived AWS credentials through OIDC; there are no AWS access keys or SSH private keys in repository secrets. The deployment role can only upload/remove an object under the bucket's `deployments/` prefix, invoke `TrackFusionWeb-Deploy` on the one API instance, read that command's result, and discover the instance's public address.
+A deployment runs only after every job succeeds and only for an explicit manual dispatch from `main`. Pushes and pull requests still run CI but never deploy. GitHub obtains short-lived AWS credentials through OIDC; there are no AWS access keys or SSH private keys in repository secrets. The deployment role can only upload/remove an object under the bucket's `deployments/` prefix, invoke `TrackFusionWeb-Deploy` on the one API instance, read that command's result, and discover the instance's public address. The new HTTPS workflow no longer needs the discovery call, but the read-only permission remains during cutover so the currently deployed workflow stays usable.
 
 The SSM document downloads the release on EC2, verifies its SHA-256 checksum, and validates required files before it changes the running installation. The host then stops the API briefly, creates a protected local backup, installs the release, runs database compatibility checks, and verifies both direct and Nginx health. An installation or health-check failure automatically restores the prior application, configuration, systemd unit, and Nginx files. The workflow removes its S3 artifact even after a failed deployment.
 
@@ -303,44 +303,105 @@ They are visible in CloudWatch immediately. To receive email notifications, set 
 
 These two alarm metrics fit within CloudWatch's current account free tier of 10 standard-resolution alarm metrics if that allowance is otherwise unused. Systems Manager Run Command on EC2 and IAM/OIDC have no additional service charge. Always confirm the current AWS pricing pages and the account's actual usage before assuming a zero-dollar total.
 
-## Current EC2 deployment
+## Production Deployment & HTTPS
 
-The initial deployment intentionally avoids a load balancer, NAT gateway, RDS, ElastiCache, and Elastic IP. PostgreSQL and Redis run on the same `t3.small` instance to keep the first deployment inexpensive and understandable.
+Production remains one Ubuntu 24.04 `t3.small` EC2 instance. PostgreSQL, Redis, and Express are local to that host; ports 5432, 6379, and 8081 are not public. Nginx accepts public traffic on ports 80 and 443 and forwards it to Express at `127.0.0.1:8081`. This lets Nginx manage certificates and redirects while the Node process stays unprivileged and off the public network.
 
-Current design:
+### DNS, the stable address, and TLS
 
-- Ubuntu 24.04 LTS, `t3.small`
-- 20 GiB encrypted gp3 root volume
-- 2 GiB swap file for installation and occasional audio-processing pressure
-- IMDSv2 required
-- T3 standard CPU credits to prevent surplus-credit charges
-- ports 80/443 public; port 22 restricted to the developer IP
-- ports 5432, 6379, and 8081 not publicly exposed
-- Nginx proxies to `127.0.0.1:8081`
-- systemd restarts the API after failures and at boot
+IONOS DNS connects a name to an address. The production record is:
 
-The public IPv4 address is temporary and can change after a stop/start cycle.
+| IONOS field | Value |
+| --- | --- |
+| Type | `A` |
+| Host/name | `api` |
+| Value | the reviewed `terraform output -raw api_public_ip` value |
+| TTL | `300` during cutover; raise it later if desired |
 
-### Reproduce the initial manual host setup
+The October 25, 2026 audit found `api.trackfusionweb.com` pointing to the instance's temporary address `3.91.170.191`, with no Elastic IP allocated. Terraform now declares one Elastic IP and its association, but it must not be applied until the Phase B plan is reviewed. Association replaces the temporary address and can briefly interrupt access while the IONOS record changes. Do not edit the root domain, MX, TXT, or other unrelated records.
 
-Copy a secret-free release to the instance, then run:
+A TLS certificate proves to browsers that they reached `api.trackfusionweb.com` and encrypts data in transit. Let's Encrypt issues that certificate through Certbot. The private key remains root-readable under `/etc/letsencrypt`; it is never stored in Git, S3 deployment artifacts, or application backups.
+
+Before a certificate exists, [`deploy/nginx/trackfusionweb-api.conf`](deploy/nginx/trackfusionweb-api.conf) serves HTTP and the ACME challenge without referring to nonexistent certificate files. [`deploy/ec2/setup-https.sh`](deploy/ec2/setup-https.sh) then:
+
+1. verifies that DNS resolves to the EC2 instance;
+2. installs Ubuntu's Certbot package;
+3. requests the certificate through the HTTP webroot challenge;
+4. validates and gracefully reloads Nginx with the tracked TLS configuration;
+5. creates the non-secret `/etc/nginx/trackfusionweb-api-https-enabled` marker, which changes ordinary HTTP requests to a fixed-host HTTPS redirect;
+6. enables the packaged `certbot.timer` and runs a renewal dry-run.
+
+The exact reviewed activation sequence is in [`docs/PRODUCTION_HTTPS_ROLLOUT.md`](docs/PRODUCTION_HTTPS_ROLLOUT.md). It is a separate production operation; routine releases never reinstall Certbot or request certificates.
+
+### Automatic renewal and expiry warning
+
+Ubuntu's `certbot.timer` checks periodically and renews only when a certificate is near expiry. A deploy hook runs `nginx -t` and then gracefully reloads Nginx so new workers adopt a renewed certificate while current connections can finish. A weekly GitHub Actions check fails when the public certificate cannot be verified or has 30 days or less remaining. That check has no AWS resource cost, but its warning depends on GitHub Actions and repository notifications remaining enabled.
+
+Useful renewal commands:
 
 ```bash
-sudo bash deploy/ec2/bootstrap-host.sh
-sudo rsync -a /path/to/release/ /opt/trackfusion/api/
-sudo bash /opt/trackfusion/api/deploy/ec2/configure-app.sh
+# Show whether the packaged renewal timer is enabled and waiting.
+sudo systemctl status certbot.timer
+sudo systemctl list-timers certbot.timer
+
+# List the installed certificate and its expiry date.
+sudo certbot certificates
+openssl s_client -connect api.trackfusionweb.com:443 \
+  -servername api.trackfusionweb.com </dev/null 2>/dev/null \
+  | openssl x509 -noout -dates -issuer -subject
+
+# Exercise Let's Encrypt's staging renewal path. Run after live activation.
+sudo certbot renew --dry-run --cert-name api.trackfusionweb.com
+
+# Inspect renewal attempts and the Nginx reload hook.
+sudo journalctl -u certbot.service -n 100 --no-pager
+sudo tail -n 100 /var/log/letsencrypt/letsencrypt.log
 ```
 
-This direct setup path is intended for an empty host. Routine releases use the guarded SSM deployment path described above. `bootstrap-host.sh` installs and verifies the system dependencies. `configure-app.sh`:
+Renewal is designed to avoid an API restart, but zero downtime cannot be guaranteed. Expired DNS records, blocked port 80, Let's Encrypt outages or rate limits, a full disk, invalid Nginx configuration, a stopped timer, or disabled GitHub notifications can prevent renewal or hide its failure.
 
-- generates server-only secrets under `/etc/trackfusion/`;
-- creates the local database role and database only when absent and otherwise verifies the preserved credential;
-- installs Node and Python dependencies;
-- initializes the schema transactionally and verifies its compatibility;
-- installs the systemd and Nginx configurations;
-- restarts the API and waits for direct and Nginx health checks.
+### Future application deployments
 
-If an SSM deployment fails after changing application files, `deploy-release.sh` automatically invokes `rollback-release.sh` with the backup it just created. A backup can also be selected manually for a reviewed application rollback:
+Production deployments remain manual `workflow_dispatch` runs from `main` through the protected `production` environment. GitHub uses OIDC, uploads a checksum-protected release to S3, and invokes the existing `TrackFusionWeb-Deploy` SSM document. The host backs up the current release, installs the new one, and checks both Express directly and Nginx over HTTPS. The workflow then checks `https://api.trackfusionweb.com` from outside AWS. It does not use an insecure HTTP fallback.
+
+`configure-app.sh` updates the tracked Nginx application configuration only after confirming that an active HTTPS marker still has certificate files. It does not modify `/etc/letsencrypt` or the Certbot deploy hook. This preserves certificates and keys across releases.
+
+### Authentication and frontend compatibility
+
+The existing frontend remains `https://trackfusionweb.vercel.app`. Production configuration uses:
+
+```env
+FRONTEND_URL=https://trackfusionweb.vercel.app
+CORS_ALLOWED_ORIGINS=https://trackfusionweb.vercel.app
+COOKIE_SECURE=true
+COOKIE_SAME_SITE=none
+```
+
+The cookies are `HttpOnly`, `Secure`, host-only, and `SameSite=None`; do not set `COOKIE_DOMAIN` for the Vercel/API split. Express trusts exactly one proxy hop, the session middleware is proxy-aware, CORS allows credentials only for the exact configured origin, and Nginx preserves `Host`, client IP, and forwarded protocol headers. The frontend must set its API URL to `https://api.trackfusionweb.com` and send credentials (for example, `credentials: "include"`) for login, logout, session, and other cookie-authenticated calls. Password-reset links continue to use `FRONTEND_URL`; OTP behavior is unchanged. Cross-site cookies may still be blocked by browser privacy settings, so test the actual supported browsers.
+
+### Verify production
+
+```bash
+# Application and proxy configuration.
+sudo systemctl status trackfusionweb-api --no-pager
+sudo journalctl -u trackfusionweb-api -n 100 --no-pager
+sudo nginx -t
+sudo systemctl status nginx --no-pager
+
+# Direct loopback and public HTTPS health.
+curl -fsS http://127.0.0.1:8081/health
+curl -fsS --proto '=https' --tlsv1.2 https://api.trackfusionweb.com/health
+
+# HTTP must redirect to the fixed HTTPS hostname.
+curl -sSI http://api.trackfusionweb.com/health
+
+# Check the full public smoke set.
+API_BASE_URL=https://api.trackfusionweb.com npm run smoke
+```
+
+### Backups, rollback, and recovery
+
+The existing guarded release process is unchanged. Pre-deployment backups under `/var/backups/trackfusionweb-api` now also capture the HTTP, shared proxy, and TLS Nginx files plus the HTTPS marker. Certificates are intentionally excluded and remain in `/etc/letsencrypt`. Older pre-HTTPS backups remain accepted; missing TLS-era paths are treated as absent.
 
 ```bash
 sudo ls -1 /var/backups/trackfusionweb-api
@@ -348,44 +409,17 @@ sudo bash /opt/trackfusion/api/deploy/ec2/rollback-release.sh \
   /var/backups/trackfusionweb-api/YYYYMMDDTHHMMSSZ-RELEASE_SHA
 ```
 
-That command restores the application and host configuration while leaving the current database and uploads intact. Restoring `postgresql.dump` or `uploads.tar.gz` is a separate data-recovery operation and should not be performed during a normal release rollback.
+Rollback restores the application, `/etc/trackfusion`, systemd unit, and Nginx state, then validates Nginx before reloading. It does not automatically restore PostgreSQL or uploads because that could erase newer data. If initial HTTPS activation fails before passing health checks, the setup script restores its pre-activation Nginx files; any issued certificate is retained for diagnosis and a safe retry.
 
-The dedicated `trackfusion` system user is created by `bootstrap-host.sh`. Run both direct and proxied curls below after configuration.
+### Troubleshooting HTTPS
 
-Useful production commands:
+- **DNS still shows the old address:** compare `getent ahostsv4 api.trackfusionweb.com` with `terraform output -raw api_public_ip`. Update only the IONOS `api` A record and allow for its TTL.
+- **Certificate issuance fails:** confirm public port 80 is open and `curl http://api.trackfusionweb.com/.well-known/acme-challenge/test` reaches this Nginx host (a `404` is expected when no test file exists). Review `/var/log/letsencrypt/letsencrypt.log` before retrying to avoid rate limits.
+- **Nginx will not reload:** run `sudo nginx -t`; the old workers normally continue serving until configuration validates. Do not restart Nginx as a first response.
+- **Browser login fails:** verify the frontend HTTPS API URL, `credentials: "include"`, the exact CORS origin, both `Secure`/`SameSite=None` cookie attributes, and browser third-party-cookie policy. Inspect the response `Set-Cookie` headers without sharing token values.
+- **Renewal warning fires:** run `sudo certbot renew --dry-run --cert-name api.trackfusionweb.com`, inspect the timer and logs above, and confirm DNS and ports 80/443 before changing certificate files.
 
-```bash
-sudo systemctl status trackfusionweb-api
-sudo journalctl -u trackfusionweb-api -f
-sudo systemctl restart trackfusionweb-api
-sudo nginx -t
-sudo systemctl reload nginx
-curl http://127.0.0.1:8081/health
-curl http://127.0.0.1/health
-```
-
-## HTTPS and cookies
-
-The API is currently reachable over HTTP for deployment verification. Production authentication intentionally uses `Secure` cookies, so browser login will not work until HTTPS is configured.
-
-To finish HTTPS:
-
-1. Choose an API hostname, such as `api.example.com`.
-2. Give the instance a stable address before relying on DNS.
-3. Point the hostname's DNS `A` record to that address.
-4. Replace Nginx's catch-all `server_name` with the hostname.
-5. Install Certbot and request the certificate:
-
-```bash
-sudo apt-get install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d api.example.com
-sudo certbot renew --dry-run
-```
-
-6. Set `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, and cookie values appropriately in `/etc/trackfusion/api.env`, then restart the API.
-7. Point `NEXT_PUBLIC_API_URL` in the frontend to the HTTPS API URL and redeploy the frontend.
-
-For the Vercel frontend and a separately hosted API, use `COOKIE_SECURE=true` and `COOKIE_SAME_SITE=none`.
+The architecture still avoids a load balancer, NAT gateway, RDS, and ElastiCache. As of October 25, 2026, AWS lists both in-use and idle public IPv4 addresses at `$0.005` per hour (about `$3.60` for a 30-day month). The Elastic IP replaces the already billed temporary public IPv4 address, so it should not increase steady-state address count or cost; it continues billing if left idle. Confirm pricing and actual account usage again before Phase B.
 
 ## Email delivery
 
@@ -487,7 +521,7 @@ Check all three layers:
 - Phase 2: initial EC2 deployment, IAM role, database, Redis, Nginx, S3, and remote smoke tests complete
 - Phase 3: documentation aligned with the working system
 - Phase 4: production image and Compose topology passed local build, health, schema, and smoke checks; clean rebuild after a build-context exclusion fix pending
-- Phase 5: existing AWS resources imported into encrypted remote Terraform state; configuration validated and converged with a no-change plan
-- Phase 6: CI/CD workflow, keyless GitHub-to-AWS deployment path, dependency updates, and baseline CloudWatch monitoring implemented locally
-- Remaining production prerequisites: API domain/HTTPS and Mailgun credentials
-- Pending external verification: the first local or GitHub-hosted Docker build and the first GitHub workflow run after this branch is pushed
+- Phase 5: existing AWS resources imported into encrypted remote Terraform state; the reviewed HTTPS plan remains unapplied (`2 to add, 0 to change, 0 to destroy`)
+- Phase 6: keyless GitHub-to-AWS deployment, guarded backup/rollback, and baseline CloudWatch monitoring deployed successfully
+- Remaining production prerequisites: approved HTTPS production activation and Mailgun credentials
+- Pending external verification: Elastic IP/DNS cutover, initial certificate issuance, renewal dry-run, public HTTPS workflow checks, and browser authentication regression testing

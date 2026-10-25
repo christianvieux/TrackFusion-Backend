@@ -43,7 +43,10 @@ for required_file in \
   "${app_directory}/scripts/initDatabase.js" \
   "${app_directory}/scripts/verifyDatabase.js" \
   "${app_directory}/deploy/systemd/trackfusionweb-api.service" \
-  "${app_directory}/deploy/nginx/trackfusionweb-api.conf"; do
+  "${app_directory}/deploy/nginx/trackfusionweb-api.conf" \
+  "${app_directory}/deploy/nginx/trackfusionweb-api-proxy.conf" \
+  "${app_directory}/deploy/nginx/trackfusionweb-api-tls.conf" \
+  "${app_directory}/deploy/ec2/check-api-health.sh"; do
   if [[ ! -f ${required_file} ]]; then
     echo "ERROR: application release is incomplete: ${required_file}" >&2
     exit 1
@@ -181,12 +184,32 @@ current_stage=service-configuration
 install -o root -g root -m 0644 \
   "${app_directory}/deploy/systemd/trackfusionweb-api.service" \
   /etc/systemd/system/trackfusionweb-api.service
+install -d -o root -g root -m 0755 /etc/nginx/snippets
+install -o root -g root -m 0644 \
+  "${app_directory}/deploy/nginx/trackfusionweb-api-proxy.conf" \
+  /etc/nginx/snippets/trackfusionweb-api-proxy.conf
 install -o root -g root -m 0644 \
   "${app_directory}/deploy/nginx/trackfusionweb-api.conf" \
   /etc/nginx/sites-available/trackfusionweb-api
 ln -sfn /etc/nginx/sites-available/trackfusionweb-api \
   /etc/nginx/sites-enabled/trackfusionweb-api
 rm -f /etc/nginx/sites-enabled/default
+
+if [[ -f /etc/nginx/trackfusionweb-api-https-enabled ]]; then
+  for certificate_file in \
+    /etc/letsencrypt/live/api.trackfusionweb.com/fullchain.pem \
+    /etc/letsencrypt/live/api.trackfusionweb.com/privkey.pem; do
+    if [[ ! -s ${certificate_file} ]]; then
+      echo "ERROR: HTTPS is marked active, but ${certificate_file} is missing." >&2
+      exit 1
+    fi
+  done
+  install -o root -g root -m 0644 \
+    "${app_directory}/deploy/nginx/trackfusionweb-api-tls.conf" \
+    /etc/nginx/sites-available/trackfusionweb-api-tls
+  ln -sfn /etc/nginx/sites-available/trackfusionweb-api-tls \
+    /etc/nginx/sites-enabled/trackfusionweb-api-tls
+fi
 
 nginx -t
 systemctl daemon-reload
@@ -195,22 +218,10 @@ systemctl restart trackfusionweb-api
 systemctl reload nginx
 
 current_stage=health-check
-for attempt in {1..30}; do
-  if curl -fsS --connect-timeout 2 --max-time 5 \
-    http://127.0.0.1:8081/health >/dev/null; then
-    break
-  fi
-  if [[ ${attempt} -eq 30 ]]; then
-    systemctl status trackfusionweb-api --no-pager >&2 || true
-    journalctl -u trackfusionweb-api -n 100 --no-pager >&2 || true
-    echo "ERROR: the API did not become healthy within 30 seconds." >&2
-    exit 1
-  fi
-  sleep 1
-done
-if ! curl -fsS --connect-timeout 2 --max-time 5 \
-  http://127.0.0.1/health >/dev/null; then
-  echo "ERROR: Nginx could not reach the healthy API." >&2
+if ! bash "${app_directory}/deploy/ec2/check-api-health.sh" 30; then
+  systemctl status trackfusionweb-api --no-pager >&2 || true
+  journalctl -u trackfusionweb-api -n 100 --no-pager >&2 || true
+  echo "ERROR: the API did not pass its direct and Nginx health checks." >&2
   exit 1
 fi
 

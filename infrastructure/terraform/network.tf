@@ -42,3 +42,22 @@ resource "aws_vpc_security_group_egress_rule" "all_ipv4" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
+# A stable public address keeps the IONOS A record valid across EC2 stop/start
+# cycles. This resource must be reviewed and applied before changing DNS.
+resource "aws_eip" "api" {
+  domain = "vpc"
+
+  tags = {
+    Name        = "TrackFusionWeb-API-EIP"
+    Environment = "production"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_eip_association" "api" {
+  allocation_id = aws_eip.api.id
+  instance_id   = aws_instance.api.id
+}

@@ -172,6 +172,7 @@ jobs:
       AWS_ACCOUNT_ID: "020457827871"
       INSTANCE_ID: i-003f490e99fd1054d
       DEPLOYMENT_BUCKET: trackfusionweb-audio.s3bucket-020457827871-us-east-1-an
+      API_BASE_URL: https://api.trackfusionweb.com
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -267,18 +268,14 @@ jobs:
           fi
           show_ssm_result
 
-      - name: Verify the public endpoint
+      - name: Verify the public HTTPS endpoint
         shell: bash
         run: |
           set -euo pipefail
-          public_ip="$(aws ec2 describe-instances \
-            --instance-ids "$INSTANCE_ID" \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-            --output text)"
-          curl -fsS "http://${public_ip}/health"
-          curl -fsS "http://${public_ip}/auth/session"
-          curl -fsS "http://${public_ip}/tracks/public"
-          curl -fsS "http://${public_ip}/enums/trackAttributes"
+          curl -fsS --proto '=https' --tlsv1.2 "${API_BASE_URL}/health"
+          curl -fsS --proto '=https' --tlsv1.2 "${API_BASE_URL}/auth/session"
+          curl -fsS --proto '=https' --tlsv1.2 "${API_BASE_URL}/tracks/public"
+          curl -fsS --proto '=https' --tlsv1.2 "${API_BASE_URL}/enums/trackAttributes"
 
       - name: Remove the deployment artifact
         if: always() && steps.release.outputs.object_key != ''

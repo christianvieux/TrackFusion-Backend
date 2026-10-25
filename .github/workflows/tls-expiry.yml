@@ -1,0 +1,23 @@
+name: TLS certificate expiry
+
+on:
+  schedule:
+    - cron: "17 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certificate:
+    name: Warn before certificate expiry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify certificate has at least 30 days remaining
+        run: bash scripts/check-tls-expiry.sh api.trackfusionweb.com 30

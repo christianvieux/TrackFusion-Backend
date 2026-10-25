@@ -49,6 +49,8 @@ async function startServer() {
   app.set("trust proxy", process.env.NODE_ENV === "production" ? 1 : false);
   app.use(
     helmet({
+      // TLS terminates at Nginx, which owns the single production HSTS header.
+      strictTransportSecurity: false,
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
