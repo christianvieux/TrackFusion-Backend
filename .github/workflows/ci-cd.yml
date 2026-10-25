@@ -225,14 +225,47 @@ jobs:
             --query 'Command.CommandId' \
             --output text)"
           printf 'command_id=%s\n' "$command_id" >> "$GITHUB_OUTPUT"
-          if ! aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID"; then
-            aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" || true
+          show_ssm_result() {
+            aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" \
+              --query '{Status:Status,Output:StandardOutputContent,Errors:StandardErrorContent}'
+          }
+          ssm_succeeded=false
+          for wait_attempt in {1..9}; do
+            if aws ssm wait command-executed \
+              --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID"; then
+              ssm_succeeded=true
+              break
+            fi
+
+            command_status="$(aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status \
+              --output text 2>/dev/null || printf 'Unavailable')"
+            case "$command_status" in
+              Pending|InProgress|Delayed)
+                echo "SSM deployment is still running (wait cycle ${wait_attempt}/9)."
+                ;;
+              Success)
+                ssm_succeeded=true
+                break
+                ;;
+              *)
+                echo "::error::The EC2 installation or health check failed with SSM status: ${command_status}."
+                show_ssm_result || true
+                exit 1
+                ;;
+            esac
+          done
+          if [[ "$ssm_succeeded" != true ]]; then
+            echo "::error::The EC2 installation did not finish within the 15-minute SSM command timeout."
+            show_ssm_result || true
             exit 1
           fi
-          aws ssm get-command-invocation \
-            --command-id "$command_id" \
-            --instance-id "$INSTANCE_ID" \
-            --query '{Status:Status,Output:StandardOutputContent,Errors:StandardErrorContent}'
+          show_ssm_result
 
       - name: Verify the public endpoint
         shell: bash

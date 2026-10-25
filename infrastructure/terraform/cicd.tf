@@ -80,17 +80,16 @@ resource "aws_ssm_document" "deploy" {
             "set -eu",
             "archive='/tmp/trackfusionweb-{{ ReleaseId }}.tar.gz'",
             "staging='/tmp/trackfusionweb-{{ ReleaseId }}'",
+            "cleanup() { rm -f -- \"$archive\"; rm -rf -- \"$staging\"; }",
+            "trap cleanup EXIT",
+            "cleanup",
             "/usr/local/bin/node /opt/trackfusion/api/scripts/downloadDeployment.js '{{ BucketName }}' '{{ ObjectKey }}' \"$archive\"",
             "printf '%s  %s\\n' '{{ Checksum }}' \"$archive\" | sha256sum --check --strict",
             "install -d -m 0755 \"$staging\"",
             "tar --no-same-owner --no-same-permissions -xzf \"$archive\" -C \"$staging\"",
             "test -f \"$staging/package-lock.json\"",
-            "test -f \"$staging/deploy/ec2/configure-app.sh\"",
-            "rsync -a --delete --exclude=venv --exclude=node_modules --exclude=uploads \"$staging/\" /opt/trackfusion/api/",
-            "bash /opt/trackfusion/api/deploy/ec2/configure-app.sh",
-            "curl -fsS http://127.0.0.1/health",
-            "rm -f \"$archive\"",
-            "rm -rf \"$staging\""
+            "test -f \"$staging/deploy/ec2/deploy-release.sh\"",
+            "bash \"$staging/deploy/ec2/deploy-release.sh\" \"$staging\" '{{ ReleaseId }}'"
           ]
         }
       }

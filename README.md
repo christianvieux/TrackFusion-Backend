@@ -282,7 +282,11 @@ The workflow at [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) run
 
 A deployment runs only after every job succeeds and only for an explicit manual dispatch from `main`. Pushes and pull requests still run CI but never deploy. GitHub obtains short-lived AWS credentials through OIDC; there are no AWS access keys or SSH private keys in repository secrets. The deployment role can only upload/remove an object under the bucket's `deployments/` prefix, invoke `TrackFusionWeb-Deploy` on the one API instance, read that command's result, and discover the instance's public address.
 
-The SSM document downloads the release on EC2, verifies its SHA-256 checksum, validates required files, synchronizes the release, reruns the idempotent database/configuration checks, restarts the service, and verifies both direct and Nginx health. The workflow removes its S3 artifact even after a failed deployment.
+The SSM document downloads the release on EC2, verifies its SHA-256 checksum, and validates required files before it changes the running installation. The host then stops the API briefly, creates a protected local backup, installs the release, runs database compatibility checks, and verifies both direct and Nginx health. An installation or health-check failure automatically restores the prior application, configuration, systemd unit, and Nginx files. The workflow removes its S3 artifact even after a failed deployment.
+
+Pre-deployment backups are stored under `/var/backups/trackfusionweb-api` with root-only permissions. Each backup contains the previously working release (including its installed dependencies), `/etc/trackfusion` production configuration and secrets, the installed systemd/Nginx files, a local uploads archive, and a consistent custom-format PostgreSQL dump. The three newest backups are retained after successful releases. Deployments never overwrite `/opt/trackfusion/api/uploads` or objects in the production S3 bucket, and automatic rollback deliberately does not restore uploads or PostgreSQL: replacing either automatically could discard data written after the backup. Their snapshots remain available for a separately reviewed recovery if necessary.
+
+`init_database.sql` remains an idempotent initializer rather than a versioned migration system. Initialization now runs in one transaction under a PostgreSQL advisory lock, and deployment verifies all expected tables, columns, sequences, enum types, and enum labels. If an existing database is structurally incompatible, installation stops and the application release rolls back; the database dump is preserved for diagnosis. Future schema changes still require reviewed forward and rollback migrations before deployment.
 
 In GitHub, create or review the `production` environment under **Settings → Environments** and protect it so only `main` can deploy. An optional required reviewer provides a manual approval gate. The AWS trust policy is already restricted to this repository and environment.
 
@@ -317,7 +321,7 @@ Current design:
 
 The public IPv4 address is temporary and can change after a stop/start cycle.
 
-### Reproduce the manual host setup
+### Reproduce the initial manual host setup
 
 Copy a secret-free release to the instance, then run:
 
@@ -327,14 +331,24 @@ sudo rsync -a /path/to/release/ /opt/trackfusion/api/
 sudo bash /opt/trackfusion/api/deploy/ec2/configure-app.sh
 ```
 
-`bootstrap-host.sh` installs and verifies the system dependencies. `configure-app.sh`:
+This direct setup path is intended for an empty host. Routine releases use the guarded SSM deployment path described above. `bootstrap-host.sh` installs and verifies the system dependencies. `configure-app.sh`:
 
 - generates server-only secrets under `/etc/trackfusion/`;
-- creates the local database role and database;
+- creates the local database role and database only when absent and otherwise verifies the preserved credential;
 - installs Node and Python dependencies;
-- initializes and verifies the schema;
+- initializes the schema transactionally and verifies its compatibility;
 - installs the systemd and Nginx configurations;
-- restarts the API and waits for its direct health check.
+- restarts the API and waits for direct and Nginx health checks.
+
+If an SSM deployment fails after changing application files, `deploy-release.sh` automatically invokes `rollback-release.sh` with the backup it just created. A backup can also be selected manually for a reviewed application rollback:
+
+```bash
+sudo ls -1 /var/backups/trackfusionweb-api
+sudo bash /opt/trackfusion/api/deploy/ec2/rollback-release.sh \
+  /var/backups/trackfusionweb-api/YYYYMMDDTHHMMSSZ-RELEASE_SHA
+```
+
+That command restores the application and host configuration while leaving the current database and uploads intact. Restoring `postgresql.dump` or `uploads.tar.gz` is a separate data-recovery operation and should not be performed during a normal release rollback.
 
 The dedicated `trackfusion` system user is created by `bootstrap-host.sh`. Run both direct and proxied curls below after configuration.
 
@@ -477,4 +491,3 @@ Check all three layers:
 - Phase 6: CI/CD workflow, keyless GitHub-to-AWS deployment path, dependency updates, and baseline CloudWatch monitoring implemented locally
 - Remaining production prerequisites: API domain/HTTPS and Mailgun credentials
 - Pending external verification: the first local or GitHub-hosted Docker build and the first GitHub workflow run after this branch is pushed
-
