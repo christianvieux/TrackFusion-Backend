@@ -155,9 +155,3 @@ Production deployment is an explicit GitHub Actions dispatch from `main` through
 - Replace the rerunnable schema initializer with versioned database migrations for safer, traceable schema changes.
 - Configure and verify Mailgun delivery before enabling registration OTP and password-reset emails in production.
 - Expand automated coverage for controllers, background queues, S3 workflows, and end-to-end user journeys.
-
-## Contact
-
-**Christian Vieux**
-
-Email: [christianvieux.dev@gmail.com](mailto:christianvieux.dev@gmail.com)
