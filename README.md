@@ -2,7 +2,7 @@
 
 TrackFusionWeb is a music-sharing application for publishing, discovering, and organizing audio tracks. This repository contains the backend API that manages accounts, track metadata, privacy rules, favorites, media storage, and audio analysis.
 
-🌐 **Live application:** [TrackFusionWeb](https://trackfusionweb.com)
+🌐 **Live application:** [trackfusionweb.com](https://trackfusionweb.com)
 
 The production API is available at [api.trackfusionweb.com](https://api.trackfusionweb.com). Its health endpoint is `GET /health`.
 
