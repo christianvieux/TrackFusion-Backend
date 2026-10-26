@@ -133,7 +133,7 @@ On every push and pull request, GitHub Actions runs the Jest suite, a production
 
 Production runs on one Ubuntu EC2 instance with a Terraform-managed Elastic IP. Nginx terminates HTTPS using a Let's Encrypt certificate and proxies to the API managed by systemd. Certbot renews the certificate automatically, and a scheduled workflow warns when the public certificate has 30 days or less remaining.
 
-Terraform manages the EC2 instance, network rules, private encrypted S3 bucket, runtime IAM permissions, Elastic IP, GitHub deployment identity, Systems Manager deployment command, and CloudWatch status/CPU alarms. Detailed operational material remains in [`docs/`](docs/) and [`infrastructure/terraform/`](infrastructure/terraform/).
+Terraform manages the EC2 instance, network rules, private encrypted S3 bucket, runtime IAM permissions, Elastic IP, GitHub deployment identity, Systems Manager deployment command, and CloudWatch status/CPU alarms. The canonical infrastructure definitions live in [`infrastructure/terraform/`](infrastructure/terraform/), while tracked host and proxy configuration lives in [`deploy/`](deploy/).
 
 Production deployment is an explicit GitHub Actions dispatch from `main` through the `production` environment. The workflow:
 
