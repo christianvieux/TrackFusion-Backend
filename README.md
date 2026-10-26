@@ -6,6 +6,12 @@ TrackFusionWeb is a music-sharing application for publishing, discovering, and o
 
 The production API is available at [api.trackfusionweb.com](https://api.trackfusionweb.com). Its health endpoint is `GET /health`.
 
+## Frontend application
+
+The user-facing frontend for TrackFusionWeb is maintained in a separate repository: **[trackfusionweb-app](https://github.com/christianvieux/trackfusionweb-app)**.
+
+The frontend connects to this backend API for authentication, track discovery and management, favorites, uploads, and playback. Visit [trackfusionweb.com](https://trackfusionweb.com) to access the application.
+
 ## Key features
 
 - Account registration with one-time-code validation, login/logout, session checks, password changes, and password-reset workflows.
