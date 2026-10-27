@@ -16,7 +16,7 @@ The frontend connects to this backend API for authentication, track discovery an
 
 - Account registration with one-time-code validation, login/logout, session checks, password changes, and password-reset workflows.
 - Public and private track catalogs with creator ownership checks, profile data, favorites, and track editing or deletion.
-- Direct browser uploads to a private Amazon S3 bucket through time-limited presigned URLs.
+- Direct browser uploads to private S3-compatible storage through time-limited presigned URLs.
 - Signed playback URLs that keep media private while allowing controlled access.
 - Redis-backed background jobs for upload processing and BPM/key analysis.
 - Audio and image validation before media records are finalized.
@@ -30,14 +30,15 @@ The frontend connects to this backend API for authentication, track discovery an
 | PostgreSQL 16 | Users, tracks, favorites, verification codes, reset tokens, and related metadata. |
 | Redis and Bull | Server-side sessions and asynchronous media-processing jobs. |
 | Python 3.12, librosa, NumPy, and FFmpeg | BPM/key analysis and supporting audio processing. |
-| Amazon S3 and AWS SDK v3 | Private media storage, presigned uploads, and signed playback. |
+| AWS S3, SeaweedFS, and AWS SDK v3 | Private production and local media storage through one S3-compatible implementation. |
+| Resend and Mailpit | Production transactional email and local-only SMTP capture. |
 | Nginx and systemd | TLS termination, reverse proxying, and API process supervision on EC2. |
 | Terraform and GitHub Actions | Reproducible AWS infrastructure and tested, keyless deployments. |
 | Jest and Docker Compose | Unit testing and a repeatable local service stack. |
 
-Transactional verification, password-reset, and password-change emails are sent
-through Resend from `TrackFusionWeb <verify@mail.trackfusionweb.com>`. Delivery
-can be disabled explicitly for local development or operational maintenance.
+Transactional verification, password-reset, and password-change emails use an
+explicit provider: Resend in production and Mailpit SMTP capture locally. Codes
+and reset tokens are never returned by the development API.
 
 ## Architecture
 
@@ -52,9 +53,9 @@ Express API :8081
    |-- PostgreSQL       users, tracks, favorites, tokens
    |-- Redis + Bull     sessions, job state, background queues
    |      `-- Node/Python workers for media validation and analysis
-   `-- Amazon S3        private audio and image objects
+   `-- S3 storage       private audio and image objects
 
-Browser <---- time-limited presigned upload/playback URLs ----> S3
+Browser <---- time-limited presigned upload/playback URLs ----> S3-compatible storage
 ```
 
 Nginx is the only public application entry point in production. It redirects HTTP to HTTPS and forwards requests to Express on the EC2 loopback interface. PostgreSQL, Redis, and Express are not exposed publicly.
@@ -65,148 +66,102 @@ For playback, the API checks the track's privacy and ownership before returning 
 
 ## Getting started
 
-### Docker Compose
+### Docker Compose: supported local workflow
 
-Docker Compose is the quickest way to run the API, PostgreSQL, and Redis together.
+Prerequisites are Docker Engine with Compose v2 and Node.js 22+ for running the
+host-side tests. The stack contains the API, PostgreSQL, Redis, SeaweedFS object
+storage, and Mailpit email capture. It uses dedicated local credentials and
+does not use AWS SSO, IAM keys, an AWS account, Resend, or remote infrastructure.
 
-```bash
-cp .env.example .env
-# Replace the password and secret placeholders in .env.
-docker compose up --build
-```
-
-The API listens on `http://127.0.0.1:8081`. Verify it in another terminal:
+Create `.env` only if it does not already exist, then replace the password and
+secret placeholders. Never overwrite an existing local environment file.
 
 ```bash
-curl http://127.0.0.1:8081/health
-```
-
-The Compose stack initializes the database before starting Express and keeps PostgreSQL and Redis data in named volumes. Run `docker compose down` to stop it without deleting that data.
-
-S3-backed features require a valid bucket and AWS credentials discoverable by the AWS SDK. With Compose, export temporary AWS credential variables in the launching shell. The application can still start for health and non-storage development with the placeholder bucket from `.env.example`.
-
-### Run directly
-
-Install Node.js 22+, Python 3.12, FFmpeg, PostgreSQL, and Redis. Create a PostgreSQL database matching `DATABASE_URL`, start PostgreSQL and Redis, then run:
-
-```bash
-cp .env.example .env
-npm ci
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
-npm run db:init
-npm run dev
-```
-
-`.env.example` documents the required server, cookie, database, Redis, AWS, email, and media-limit settings. Generate independent secrets of at least 32 characters. Do not store AWS access keys in `.env`; use the standard AWS credential chain instead.
-
-For local email delivery, use the procedure below. Keep delivery disabled to
-use the explicitly enabled development-only OTP and reset-token response fields
-without contacting Resend.
-
-### Local transactional-email test
-
-Run all commands in this backend repository unless a command changes directory.
-The supported local stack is the existing Compose API, PostgreSQL, and Redis;
-both data services are private to the Compose network and use named local
-volumes. Never add `-v` to `docker compose down` unless the local data is
-intentionally being discarded.
-
-Start with delivery disabled and prove the application is healthy:
-
-```bash
-npm ci
-npm test -- --runInBand
-docker compose up -d --build
-docker compose exec -T api node scripts/verifyDatabase.js
-curl -fsS http://127.0.0.1:8081/health
-API_BASE_URL=http://127.0.0.1:8081 npm run smoke
-```
-
-The API container runs the rerunnable schema initializer before Express starts.
-These commands do not contact Resend while `EMAIL_DELIVERY_ENABLED=false`.
-
-To test real delivery, confirm `.env` is ignored, restrict its permissions, and
-open it without putting the API key in shell history:
-
-```bash
-git check-ignore -q .env
+test -e .env || cp .env.example .env
 chmod 600 .env
-nano .env
-```
-
-Set `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS` to
-`http://localhost:3001`. Set `EMAIL_DELIVERY_ENABLED=true`, add
-`RESEND_API_KEY` in the editor, and set both development exposure flags to
-`false` so a successful test depends on the received message. Do not put the
-key in a command, screenshot, log, commit, or frontend environment file. Apply
-the changed environment by recreating only the API container:
-
-```bash
-docker compose up -d --force-recreate api
-docker compose exec -T api node scripts/validateEnvironment.js --local-only
+npm ci
+docker compose up -d --build
+docker compose ps
 curl -fsS http://127.0.0.1:8081/health
 ```
 
-For the sibling frontend checkout, create an ignored `.env.local` containing
-only these public local values, then start its existing development server:
+The API is at `http://127.0.0.1:8081`, the browser-facing S3 endpoint is at
+`http://127.0.0.1:9000`, and the captured-email inbox is at
+`http://127.0.0.1:8025`. PostgreSQL and Redis remain private to the Compose
+network, avoiding conflicts with native services. Named volumes persist database,
+queue, object, and inbox data.
+
+The `storage-init` service safely creates the development bucket, configures CORS
+for `STORAGE_CORS_ALLOWED_ORIGINS`, and verifies write/delete access before the
+API starts. Internal SDK requests use `http://storage:8333`; signed browser URLs
+are generated directly for `http://127.0.0.1:9000`. Signed URLs are never rewritten.
+
+Run the focused checks:
+
+```bash
+npm test -- --runInBand
+docker compose exec -T api node scripts/verifyDatabase.js
+API_BASE_URL=http://127.0.0.1:8081 npm run smoke
+npm run storage:verify
+npm run registration:verify
+```
+
+`registration:verify` creates unique local-only test accounts and retained media.
+It verifies Mailpit OTP/reset delivery, grant consumption, concurrency, session,
+login/logout, password reset, profile upload, WAV processing, and signed media
+retrieval. It never prints OTPs, reset tokens, credentials, or signed URLs.
+
+Stop services without deleting data:
+
+```bash
+docker compose down
+```
+
+Do not add `-v` unless all local database, inbox, and object data is intentionally
+being discarded.
+
+### Browser workflow
+
+For the sibling frontend checkout, create an ignored `.env.local` containing:
 
 ```dotenv
 NEXT_PUBLIC_API_URL=http://localhost:8081
 NEXT_PUBLIC_SITE_URL=http://localhost:3001
 ```
 
+Start its existing development server and open `http://localhost:3001`. Use any
+syntactically valid local test address; Mailpit captures it without external
+delivery. Read the verification code or reset link at `http://127.0.0.1:8025`.
+
+The current frontend contract remains supported: `/users/check-email`,
+`/otp/generate`, `/otp/verify`, `/users/register`, and `/auth/login` still exist,
+and cookie credentials carry the verified registration grant between verify and
+register. Recommended frontend cleanup is to retain the `registrationGrant`
+returned by `/otp/verify`, send it as `registration_grant`, stop sending
+`otp_code` to `/users/register`, and skip the redundant login because successful
+registration now establishes the session. Signed profile-picture URLs must not
+have cache-busting query parameters appended; request a fresh user response
+instead when the picture changes.
+
+### Run the API directly
+
+Install Node.js 22+, Python 3.12, FFmpeg, native PostgreSQL, and native Redis.
+Start SeaweedFS and Mailpit from Compose (`docker compose up -d storage
+storage-init mailpit`), configure the direct-host values from `.env.example`,
+then run:
+
 ```bash
-cd ../TrackFusion-Frontend
-chmod 600 .env.local
 npm ci
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+npm run db:init
+npm run db:verify
 npm run dev
 ```
 
-The browser is then available at `http://localhost:3001`, and reset links point
-back to that local frontend. Do not use a frontend configuration that points at
-a remote API for these tests.
-
-After choosing an address you control and explicitly approving a real message
-to that destination, trigger exactly one verification email from the backend
-directory:
-
-```bash
-read -r -p "Destination email you control: " TEST_EMAIL
-TEST_EMAIL="$TEST_EMAIL" node -e 'process.stdout.write(JSON.stringify({email: process.env.TEST_EMAIL, purpose: "registration"}))' \
-  | curl -i -sS -X POST http://127.0.0.1:8081/otp/generate \
-      -H 'Content-Type: application/json' --data-binary @-
-```
-
-An HTTP `200` means the API and Resend accepted the request; it does not prove
-mailbox delivery. Confirm the message is present in the destination inbox (and
-junk folder), that its sender is
-`TrackFusionWeb <verify@mail.trackfusionweb.com>`, and that the matching Resend
-email event reaches `Delivered` rather than only `Sent`, `Bounced`, or
-`Complained`.
-
-Use a new local-only account to check the complete workflow:
-
-1. Verify the six-digit code through `POST /otp/verify`, then register through
-   `POST /users/register`; registration consumes the code.
-2. Confirm immediate `POST /otp/generate` repetition returns `429` without
-   sending. After the 60-second cooldown, an intentional resend sends a new
-   message and invalidates the old code.
-3. Confirm `POST /auth/forgot-password` returns the same generic `200` response
-   for registered and unknown addresses. Only the registered address receives a
-   local reset link.
-4. Check the reset link with `GET /auth/verify-reset-token/:token`, reset with
-   `POST /auth/reset-password/:token`, and confirm the same token is rejected
-   afterward. A successful reset also sends a password-change confirmation.
-5. Confirm malformed, unknown, used, and expired codes/tokens return `400`
-   without exposing their values. OTPs expire after 10 minutes and reset links
-   after 15 minutes.
-
-Each step that intentionally sends another real message needs the same
-destination check and approval. Return to no-delivery development mode afterward
-by setting `EMAIL_DELIVERY_ENABLED=false`, restoring both development exposure
-flags to `true`, removing `RESEND_API_KEY` from `.env`, and recreating the API
-container.
+Do not point `DATABASE_URL` or `REDIS_URL` at production during local testing.
+The local storage provider fails explicitly when unavailable and never falls
+back to AWS.
 
 ## API overview
 
@@ -233,9 +188,11 @@ npm test -- --runInBand
 npm run db:init
 npm run db:verify
 npm run smoke
+npm run storage:verify
+npm run registration:verify
 ```
 
-`npm run smoke` checks health, session, public-track, and track-attribute responses against `API_BASE_URL` or the local API. `db:init` is rerunnable and `db:verify` checks the expected tables, columns, sequences, and enum values.
+`npm run smoke` checks health, session, public-track, and track-attribute responses against `API_BASE_URL` or the local API. `db:init` is rerunnable and `db:verify` checks the expected tables, columns, sequences, and enum values. The two local verifiers require the Compose storage/Mailpit stack and never contact AWS or Resend.
 
 On every push and pull request, GitHub Actions runs the Jest suite, a production dependency audit, Python syntax checks, PostgreSQL schema checks, live API smoke tests with PostgreSQL and Redis, a production Docker build, and Terraform validation. Dependabot checks application and infrastructure dependencies weekly.
 
@@ -265,8 +222,8 @@ generated from repository examples.
 
 The tracked [`deploy/ec2/production-managed.env`](deploy/ec2/production-managed.env)
 file is the source of truth for the small allowlist of deployment-managed,
-non-secret settings: the frontend URL, API CORS origin, and cookie security and
-same-site policies. A deployment copies the existing host environment to a
+non-secret settings: the frontend URL, API CORS origin, cookie policies, and
+the production-only Resend/AWS provider selections. A deployment copies the existing host environment to a
 root-protected temporary directory, reconciles only those allowlisted keys,
 and validates the candidate with the incoming release while the current API is
 still healthy. Invalid candidates abort without stopping or changing the
@@ -303,15 +260,20 @@ curl -fsS https://api.trackfusionweb.com/health
 
 Never print, source, commit, or place this file in a release directory. A
 configuration change takes effect only after `trackfusionweb-api` is restarted.
-For local development, copy the repository's `.env.example` to `.env`; that
-local file is ignored by Git and is unrelated to the host configuration.
+For local development, create `.env` from `.env.example` only when it does not
+already exist; that local file is ignored by Git and is unrelated to the host
+configuration.
 
-Resend is the only supported application email provider. Production requires
-these operator-managed values in `/etc/trackfusion/.env`:
+Production is locked to Resend and AWS S3. Provider selection is deployment
+managed; production rejects `smtp` and `s3-compatible` providers. The protected
+host environment retains its existing bucket/region and uses the EC2 IAM role,
+not static credentials:
 
 ```dotenv
 EMAIL_DELIVERY_ENABLED=true
 RESEND_API_KEY=replace_with_the_protected_resend_key
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=replace_with_the_production_bucket
 ```
 
 The sender is fixed in code to the verified `mail.trackfusionweb.com` domain.
@@ -331,15 +293,27 @@ origin explicitly configured.
 
 ## Security
 
-- Passwords are hashed with bcrypt. Verification codes and password-reset
-  tokens are hashed at rest, time-limited, attempt-limited where applicable,
-  and consumed once.
+- Passwords are hashed with bcrypt. Verification codes, registration grants,
+  and password-reset tokens are hashed at rest, time-limited, attempt-limited
+  where applicable, and consumed once.
 - Authentication cookies are HTTP-only and use secure production settings. Sessions are stored in Redis.
 - Helmet headers, exact-origin CORS, request-size limits, Joi validation, and global/authentication/OTP rate limits protect the API boundary.
 - S3 public access is blocked. Upload and playback access use expiring signed URLs and user-scoped object keys.
 - EC2 uses an IAM role, while GitHub uses OIDC. Neither deployment path requires long-lived AWS keys in the repository.
 - Only ports 80 and 443 are public for application traffic; SSH is restricted to a configured address.
 - Production secrets are stored in the root-readable `/etc/trackfusion/.env` on the host and are excluded from release artifacts.
+
+## Known limitations
+
+- Bull processors still run in the API process to preserve the production
+  systemd topology. A dedicated worker process is a future scaling improvement,
+  not required for local portability.
+- The current frontend can continue using the session-based compatibility flow,
+  but should adopt the explicit registration grant and avoid modifying signed
+  profile URLs as described in the browser workflow above.
+- Local verification records and finalized media are intentionally retained in
+  named volumes so developers can inspect them. Stop with `docker compose down`;
+  cleanup is manual and must not target production data.
 
 ## Future improvements
 
