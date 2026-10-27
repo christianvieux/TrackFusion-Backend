@@ -135,26 +135,93 @@ CREATE TABLE IF NOT EXISTS public.user_tokens (
 CREATE TABLE IF NOT EXISTS public.password_reset_tokens (
   id integer NOT NULL DEFAULT nextval('password_reset_tokens_id_seq'::regclass),
   user_id integer NOT NULL,
-  token text NOT NULL,
+  token_hash text NOT NULL,
   used boolean NOT NULL DEFAULT false,
   created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at timestamp NOT NULL,
   CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id),
-  CONSTRAINT password_reset_tokens_token_key UNIQUE (token),
+  CONSTRAINT password_reset_tokens_token_hash_key UNIQUE (token_hash),
   CONSTRAINT password_reset_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS public.otp_codes (
   id integer NOT NULL DEFAULT nextval('otp_codes_id_seq'::regclass),
   email varchar(255) NOT NULL,
-  code varchar(6) NOT NULL,
+  code_hash text NOT NULL,
   purpose varchar(50) NOT NULL,
-  is_valid boolean DEFAULT true,
-  used boolean DEFAULT false,
-  created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+  is_valid boolean NOT NULL DEFAULT true,
+  used boolean NOT NULL DEFAULT false,
+  attempts integer NOT NULL DEFAULT 0,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   expires_at timestamp NOT NULL,
-  CONSTRAINT valid_purposes CHECK (purpose IN ('registration', 'reset_password', 'verification')),
+  CONSTRAINT valid_purposes CHECK (purpose = 'registration'),
   CONSTRAINT otp_codes_pkey PRIMARY KEY (id)
 );
+
+-- Rerunnable token-storage migration for databases created by older releases.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'password_reset_tokens'
+       AND column_name = 'token'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'password_reset_tokens'
+       AND column_name = 'token_hash'
+  ) THEN
+    ALTER TABLE public.password_reset_tokens RENAME COLUMN token TO token_hash;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'otp_codes'
+       AND column_name = 'code'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'otp_codes'
+       AND column_name = 'code_hash'
+  ) THEN
+    ALTER TABLE public.otp_codes RENAME COLUMN code TO code_hash;
+  END IF;
+END $$;
+
+ALTER TABLE public.password_reset_tokens
+  ADD COLUMN IF NOT EXISTS expires_at timestamp;
+UPDATE public.password_reset_tokens
+   SET expires_at = created_at + INTERVAL '15 minutes'
+ WHERE expires_at IS NULL;
+UPDATE public.password_reset_tokens
+   SET token_hash = encode(sha256(token_hash::bytea), 'hex'), used = TRUE
+ WHERE token_hash !~ '^[0-9a-f]{64}$';
+ALTER TABLE public.password_reset_tokens
+  ALTER COLUMN expires_at SET NOT NULL;
+
+ALTER TABLE public.otp_codes
+  ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0,
+  ALTER COLUMN code_hash TYPE text;
+DELETE FROM public.otp_codes WHERE purpose <> 'registration';
+ALTER TABLE public.otp_codes DROP CONSTRAINT IF EXISTS valid_purposes;
+ALTER TABLE public.otp_codes
+  ADD CONSTRAINT valid_purposes CHECK (purpose = 'registration');
+UPDATE public.otp_codes
+   SET code_hash = encode(sha256(code_hash::bytea), 'hex'),
+       is_valid = FALSE,
+       used = TRUE
+ WHERE code_hash !~ '^[0-9a-f]{64}$';
+UPDATE public.otp_codes
+   SET is_valid = COALESCE(is_valid, FALSE),
+       used = COALESCE(used, FALSE),
+       attempts = COALESCE(attempts, 0);
+ALTER TABLE public.otp_codes
+  ALTER COLUMN is_valid SET NOT NULL,
+  ALTER COLUMN used SET NOT NULL,
+  ALTER COLUMN attempts SET NOT NULL,
+  ALTER COLUMN created_at SET NOT NULL;
 
 -- OWNED BY (for cleanup consistency)
 ALTER SEQUENCE users_id_seq OWNED BY users.id;
@@ -171,3 +238,7 @@ CREATE INDEX IF NOT EXISTS tracks_creator_id_idx ON public.tracks (creator_id);
 CREATE INDEX IF NOT EXISTS track_interactions_user_id_idx ON public.track_interactions (user_id);
 CREATE INDEX IF NOT EXISTS password_reset_tokens_user_id_idx ON public.password_reset_tokens (user_id);
 CREATE INDEX IF NOT EXISTS otp_codes_lookup_idx ON public.otp_codes (email, purpose, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS password_reset_tokens_one_active_idx
+  ON public.password_reset_tokens (user_id) WHERE used = FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS otp_codes_one_active_idx
+  ON public.otp_codes (email, purpose) WHERE is_valid = TRUE AND used = FALSE;

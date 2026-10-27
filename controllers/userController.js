@@ -1,23 +1,8 @@
 // controllers/userController.js
 import { hashPassword } from '../utils/passwordUtils.js';
-import { queryToDatabase } from '../services/dbService.js';
-import { isEmailValid } from '../utils/emailUtils.js';
-
-export async function addUserToDatabase(username, email, password, profile_picture_url = null) {
-  const hashedPassword = await hashPassword(password);
-  const query = `
-    INSERT INTO users (username, email, password_hash, profile_picture_url, is_verified, created_at)
-    VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP)
-    RETURNING id, username, email, profile_picture_url, is_verified, created_at, updated_at
-  `;
-  const values = [username, email, hashedPassword, profile_picture_url];
-  try {
-    const result = await queryToDatabase(query, values);
-    return result.rows[0];
-  } catch (error) {
-    throw error;
-  }
-}
+import { queryToDatabase, withTransaction } from '../services/dbService.js';
+import { isEmailValid, normalizeEmail } from '../utils/emailUtils.js';
+import { consumeOtpCodeWithQuery } from '../utils/otpUtils.js';
 
 export async function updateUserOnDatabase(userId, properties) {
   const query = `UPDATE users SET ${Object.keys(properties).map((key, index) => `${key} = $${index + 2}`).join(', ')} WHERE id = $1 RETURNING *`;
@@ -30,51 +15,67 @@ export async function updateUserOnDatabase(userId, properties) {
   }
 }
 
-function handleError(error) {
-  // Custom error handling for specific error messages
-  if (error.message === "Please wait before requesting a new verification code.") {
-    throw new Error("Please wait before requesting a new verification code.");
-  }
-
+function handleRegistrationError(error) {
   if (error.code === '23505') {  // PostgreSQL unique violation error code
-    throw new Error("Username or email already exists");
+    const conflictError = new Error("Username or email already exists");
+    conflictError.code = error.code;
+    throw conflictError;
   }
 
   // For any other error, rethrow it for generic handling
   throw error;
 }
 
-async function isUserAlreadyExists(email) {
-  const existingUserQuery = "SELECT * FROM users WHERE email = $1";
-  const existingUserResult = await queryToDatabase(existingUserQuery, [email]);
-  return existingUserResult.rows.length > 0;
-}
-
-export async function registerUser(email, username, password, profilePictureUrl = null) {
+export async function registerUser(
+  email,
+  username,
+  password,
+  otpCode,
+  profilePictureUrl = null,
+) {
   try {
-    // Input validation
-    if (!email || !username || !password) {
+    if (!email || !username || !password || !otpCode) {
       throw new Error("Missing required fields");
     }
-    // Email validation
-    const validation = await isEmailValid(email);
+    const normalizedEmail = normalizeEmail(email);
+    const validation = await isEmailValid(normalizedEmail);
     if (validation.error) {
       throw new Error(validation.error);
     }
 
-    // Check if user already exists
-    if (await isUserAlreadyExists(email)) {
-      throw new Error("User already exists with this email");
+    const hashedPassword = await hashPassword(password);
+    const registration = await withTransaction(async (query) => {
+      const otpResult = await consumeOtpCodeWithQuery(
+        query,
+        normalizedEmail,
+        otpCode,
+        "registration",
+      );
+      if (!otpResult.isValid) {
+        return { otpError: otpResult.reason };
+      }
+
+      const result = await query(
+        `INSERT INTO users (
+           username, email, password_hash, profile_picture_url, is_verified, created_at
+         )
+         VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP)
+         RETURNING id, username, email, profile_picture_url, is_verified, created_at, updated_at`,
+        [username, normalizedEmail, hashedPassword, profilePictureUrl],
+      );
+      return { user: result.rows[0] };
+    });
+
+    if (registration.otpError) {
+      const error = new Error(registration.otpError);
+      error.code = "INVALID_OTP";
+      throw error;
     }
 
-    // Add to the database
-    const user = await addUserToDatabase(username, email, password, profilePictureUrl);
-    
-    // Return the user if registration is successful
-    return user
+    return registration.user;
   } catch (error) {
     // Handle specific errors and throw them
-    handleError(error);
+    handleRegistrationError(error);
   }
 }
 
@@ -100,8 +101,8 @@ export async function getUser(userId) {
 export async function getUserInfo(email) {
   try {
     // Query the database for the user
-    const query = "SELECT * FROM users WHERE email = $1";
-    const result = await queryToDatabase(query, [email]);
+    const query = "SELECT * FROM users WHERE LOWER(email) = $1";
+    const result = await queryToDatabase(query, [normalizeEmail(email)]);
 
     if (result.rows.length === 0) {
       return null;
@@ -126,6 +127,14 @@ export async function getUserInfo(email) {
     console.error("Error fetching user info:", error);
     throw error;
   }
+}
+
+export async function isEmailRegistered(email) {
+  const result = await queryToDatabase(
+    "SELECT 1 FROM users WHERE LOWER(email) = $1 LIMIT 1",
+    [normalizeEmail(email)],
+  );
+  return result.rows.length > 0;
 }
 
 export async function getUserById(userId) {

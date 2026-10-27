@@ -40,7 +40,6 @@ const REQUIRED_ENVIRONMENT_VARIABLES = [
   "CORS_ALLOWED_ORIGINS",
   "SESSION_SECRET",
   "JWT_SECRET",
-  "JWT_SECRET_PASSWORD_RESET",
   "DATABASE_URL",
   "REDIS_URL",
   "PYTHON_EXECUTABLE",
@@ -162,10 +161,10 @@ export function validateEnvironment() {
 
   const emailDeliveryEnabled = process.env.EMAIL_DELIVERY_ENABLED === "true";
   if (emailDeliveryEnabled) {
-    for (const name of ["MAILGUN_API_KEY", "MAILGUN_DOMAIN", "MAILGUN_FROM_EMAIL"]) {
-      if (!process.env[name]?.trim()) {
-        throw new Error(`${name} is required when email delivery is enabled`);
-      }
+    if (!process.env.RESEND_API_KEY?.trim()) {
+      throw new Error(
+        "RESEND_API_KEY is required when email delivery is enabled",
+      );
     }
   }
 
@@ -212,7 +211,7 @@ export function validateEnvironment() {
       throw new Error("COOKIE_DOMAIN must be unset in production");
     }
 
-    for (const name of ["SESSION_SECRET", "JWT_SECRET", "JWT_SECRET_PASSWORD_RESET"]) {
+    for (const name of ["SESSION_SECRET", "JWT_SECRET"]) {
       if (process.env[name].length < 32) {
         throw new Error(`${name} must be at least 32 characters in production`);
       }

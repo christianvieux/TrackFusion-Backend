@@ -35,7 +35,9 @@ The frontend connects to this backend API for authentication, track discovery an
 | Terraform and GitHub Actions | Reproducible AWS infrastructure and tested, keyless deployments. |
 | Jest and Docker Compose | Unit testing and a repeatable local service stack. |
 
-Mailgun support is implemented for verification and password-reset email, but delivery is controlled by configuration.
+Transactional verification, password-reset, and password-change emails are sent
+through Resend from `TrackFusionWeb <verify@mail.trackfusionweb.com>`. Delivery
+can be disabled explicitly for local development or operational maintenance.
 
 ## Architecture
 
@@ -97,6 +99,114 @@ npm run dev
 ```
 
 `.env.example` documents the required server, cookie, database, Redis, AWS, email, and media-limit settings. Generate independent secrets of at least 32 characters. Do not store AWS access keys in `.env`; use the standard AWS credential chain instead.
+
+For local email delivery, use the procedure below. Keep delivery disabled to
+use the explicitly enabled development-only OTP and reset-token response fields
+without contacting Resend.
+
+### Local transactional-email test
+
+Run all commands in this backend repository unless a command changes directory.
+The supported local stack is the existing Compose API, PostgreSQL, and Redis;
+both data services are private to the Compose network and use named local
+volumes. Never add `-v` to `docker compose down` unless the local data is
+intentionally being discarded.
+
+Start with delivery disabled and prove the application is healthy:
+
+```bash
+npm ci
+npm test -- --runInBand
+docker compose up -d --build
+docker compose exec -T api node scripts/verifyDatabase.js
+curl -fsS http://127.0.0.1:8081/health
+API_BASE_URL=http://127.0.0.1:8081 npm run smoke
+```
+
+The API container runs the rerunnable schema initializer before Express starts.
+These commands do not contact Resend while `EMAIL_DELIVERY_ENABLED=false`.
+
+To test real delivery, confirm `.env` is ignored, restrict its permissions, and
+open it without putting the API key in shell history:
+
+```bash
+git check-ignore -q .env
+chmod 600 .env
+nano .env
+```
+
+Set `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS` to
+`http://localhost:3001`. Set `EMAIL_DELIVERY_ENABLED=true`, add
+`RESEND_API_KEY` in the editor, and set both development exposure flags to
+`false` so a successful test depends on the received message. Do not put the
+key in a command, screenshot, log, commit, or frontend environment file. Apply
+the changed environment by recreating only the API container:
+
+```bash
+docker compose up -d --force-recreate api
+docker compose exec -T api node scripts/validateEnvironment.js --local-only
+curl -fsS http://127.0.0.1:8081/health
+```
+
+For the sibling frontend checkout, create an ignored `.env.local` containing
+only these public local values, then start its existing development server:
+
+```dotenv
+NEXT_PUBLIC_API_URL=http://localhost:8081
+NEXT_PUBLIC_SITE_URL=http://localhost:3001
+```
+
+```bash
+cd ../TrackFusion-Frontend
+chmod 600 .env.local
+npm ci
+npm run dev
+```
+
+The browser is then available at `http://localhost:3001`, and reset links point
+back to that local frontend. Do not use a frontend configuration that points at
+a remote API for these tests.
+
+After choosing an address you control and explicitly approving a real message
+to that destination, trigger exactly one verification email from the backend
+directory:
+
+```bash
+read -r -p "Destination email you control: " TEST_EMAIL
+TEST_EMAIL="$TEST_EMAIL" node -e 'process.stdout.write(JSON.stringify({email: process.env.TEST_EMAIL, purpose: "registration"}))' \
+  | curl -i -sS -X POST http://127.0.0.1:8081/otp/generate \
+      -H 'Content-Type: application/json' --data-binary @-
+```
+
+An HTTP `200` means the API and Resend accepted the request; it does not prove
+mailbox delivery. Confirm the message is present in the destination inbox (and
+junk folder), that its sender is
+`TrackFusionWeb <verify@mail.trackfusionweb.com>`, and that the matching Resend
+email event reaches `Delivered` rather than only `Sent`, `Bounced`, or
+`Complained`.
+
+Use a new local-only account to check the complete workflow:
+
+1. Verify the six-digit code through `POST /otp/verify`, then register through
+   `POST /users/register`; registration consumes the code.
+2. Confirm immediate `POST /otp/generate` repetition returns `429` without
+   sending. After the 60-second cooldown, an intentional resend sends a new
+   message and invalidates the old code.
+3. Confirm `POST /auth/forgot-password` returns the same generic `200` response
+   for registered and unknown addresses. Only the registered address receives a
+   local reset link.
+4. Check the reset link with `GET /auth/verify-reset-token/:token`, reset with
+   `POST /auth/reset-password/:token`, and confirm the same token is rejected
+   afterward. A successful reset also sends a password-change confirmation.
+5. Confirm malformed, unknown, used, and expired codes/tokens return `400`
+   without exposing their values. OTPs expire after 10 minutes and reset links
+   after 15 minutes.
+
+Each step that intentionally sends another real message needs the same
+destination check and approval. Return to no-delivery development mode afterward
+by setting `EMAIL_DELIVERY_ENABLED=false`, restoring both development exposure
+flags to `true`, removing `RESEND_API_KEY` from `.env`, and recreating the API
+container.
 
 ## API overview
 
@@ -196,6 +306,22 @@ configuration change takes effect only after `trackfusionweb-api` is restarted.
 For local development, copy the repository's `.env.example` to `.env`; that
 local file is ignored by Git and is unrelated to the host configuration.
 
+Resend is the only supported application email provider. Production requires
+these operator-managed values in `/etc/trackfusion/.env`:
+
+```dotenv
+EMAIL_DELIVERY_ENABLED=true
+RESEND_API_KEY=replace_with_the_protected_resend_key
+```
+
+The sender is fixed in code to the verified `mail.trackfusionweb.com` domain.
+Do not put the API key in `production-managed.env`, GitHub Actions variables,
+the repository, or deployment output. For the first Resend deployment, add the
+new values but retain legacy provider values until the release is healthy and
+its rollback window has passed; then remove the obsolete provider variables.
+The retained `/etc/trackfusion/secrets.env` file is a recovery artifact and is
+not loaded by the service.
+
 Production uses exact-origin CORS for `https://www.trackfusionweb.com`, secure
 host-only cookies, and `SameSite=Lax`. The frontend and API are different
 origins but the same HTTPS site, so credentialed requests remain compatible.
@@ -205,7 +331,9 @@ origin explicitly configured.
 
 ## Security
 
-- Passwords are hashed with bcrypt; reset tokens are time-limited and single-use.
+- Passwords are hashed with bcrypt. Verification codes and password-reset
+  tokens are hashed at rest, time-limited, attempt-limited where applicable,
+  and consumed once.
 - Authentication cookies are HTTP-only and use secure production settings. Sessions are stored in Redis.
 - Helmet headers, exact-origin CORS, request-size limits, Joi validation, and global/authentication/OTP rate limits protect the API boundary.
 - S3 public access is blocked. Upload and playback access use expiring signed URLs and user-scoped object keys.
@@ -217,5 +345,6 @@ origin explicitly configured.
 
 - Separate PostgreSQL, Redis, and the API into independently scalable services as traffic and availability requirements grow.
 - Replace the rerunnable schema initializer with versioned database migrations for safer, traceable schema changes.
-- Configure and verify Mailgun delivery before enabling registration OTP and password-reset emails in production.
+- Add end-to-end email-delivery monitoring if transactional volume grows enough
+  to justify provider webhooks.
 - Expand automated coverage for controllers, background queues, S3 workflows, and end-to-end user journeys.

@@ -11,7 +11,6 @@ const validEnvironment = {
   CORS_ALLOWED_ORIGINS: "http://localhost:3001",
   SESSION_SECRET: "test-session-secret",
   JWT_SECRET: "test-jwt-secret",
-  JWT_SECRET_PASSWORD_RESET: "test-password-reset-secret",
   DATABASE_URL: "postgresql://user:password@localhost:5432/trackfusionweb_db",
   REDIS_URL: "redis://127.0.0.1:6379",
   PYTHON_EXECUTABLE: "venv/bin/python",
@@ -35,7 +34,6 @@ function configureValidProductionEnvironment() {
     NODE_ENV: "production",
     SESSION_SECRET: "s".repeat(32),
     JWT_SECRET: "j".repeat(32),
-    JWT_SECRET_PASSWORD_RESET: "r".repeat(32),
     EMAIL_DELIVERY_ENABLED: "false",
     EXPOSE_OTP_IN_DEVELOPMENT: "false",
     EXPOSE_RESET_TOKEN_IN_DEVELOPMENT: "false",
@@ -88,6 +86,15 @@ test("allows production startup with email-dependent features disabled", () => {
   configureValidProductionEnvironment();
 
   expect(validateEnvironment()).toEqual({ port: 8081 });
+});
+
+test("requires the Resend API key when email delivery is enabled", () => {
+  process.env.EMAIL_DELIVERY_ENABLED = "true";
+  delete process.env.RESEND_API_KEY;
+
+  expect(() => validateEnvironment()).toThrow(
+    "RESEND_API_KEY is required when email delivery is enabled",
+  );
 });
 
 test("rejects insecure cookies in production", () => {
