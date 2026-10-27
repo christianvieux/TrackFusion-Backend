@@ -66,6 +66,8 @@ const BOOLEAN_ENVIRONMENT_VARIABLES = [
   "EXPOSE_RESET_TOKEN_IN_DEVELOPMENT",
 ];
 
+const PRODUCTION_FRONTEND_ORIGIN = "https://www.trackfusionweb.com";
+
 function validateUrl(name, allowedProtocols) {
   let value;
   try {
@@ -186,8 +188,22 @@ export function validateEnvironment() {
     if (frontendUrl.protocol !== "https:") {
       throw new Error("FRONTEND_URL must use https: in production");
     }
+    if (process.env.FRONTEND_URL !== PRODUCTION_FRONTEND_ORIGIN) {
+      throw new Error(
+        `FRONTEND_URL must be ${PRODUCTION_FRONTEND_ORIGIN} in production`,
+      );
+    }
     if (corsOrigins.some((origin) => origin.protocol !== "https:")) {
       throw new Error("CORS_ALLOWED_ORIGINS must use https: in production");
+    }
+    if (
+      !corsOrigins.some(
+        (origin) => origin.origin === PRODUCTION_FRONTEND_ORIGIN,
+      )
+    ) {
+      throw new Error(
+        `CORS_ALLOWED_ORIGINS must include ${PRODUCTION_FRONTEND_ORIGIN} in production`,
+      );
     }
 
     for (const name of ["SESSION_SECRET", "JWT_SECRET", "JWT_SECRET_PASSWORD_RESET"]) {

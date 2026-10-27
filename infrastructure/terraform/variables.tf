@@ -65,7 +65,7 @@ variable "frontend_origins" {
   description = "Exact browser origins allowed to use presigned S3 requests."
   type        = list(string)
   default = [
-    "https://trackfusionweb.com",
+    "https://www.trackfusionweb.com",
     "http://localhost:3000",
     "http://localhost:3001",
   ]

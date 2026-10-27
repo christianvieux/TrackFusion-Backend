@@ -2,7 +2,7 @@
 
 TrackFusionWeb is a music-sharing application for publishing, discovering, and organizing audio tracks. This repository contains the backend API that manages accounts, track metadata, privacy rules, favorites, media storage, and audio analysis.
 
-🌐 **Live application:** [trackfusionweb.com](https://trackfusionweb.com)
+🌐 **Live application:** [www.trackfusionweb.com](https://www.trackfusionweb.com)
 
 The production API is available at [api.trackfusionweb.com](https://api.trackfusionweb.com). Its health endpoint is `GET /health`.
 
@@ -10,7 +10,7 @@ The production API is available at [api.trackfusionweb.com](https://api.trackfus
 
 The user-facing frontend for TrackFusionWeb is maintained in a separate repository: **[trackfusionweb-app](https://github.com/christianvieux/trackfusionweb-app)**.
 
-The frontend connects to this backend API for authentication, track discovery and management, favorites, uploads, and playback. Visit [trackfusionweb.com](https://trackfusionweb.com) to access the application.
+The frontend connects to this backend API for authentication, track discovery and management, favorites, uploads, and playback. Visit [www.trackfusionweb.com](https://www.trackfusionweb.com) to access the application.
 
 ## Key features
 
@@ -156,7 +156,7 @@ directory or regenerate it. Routine deployments back up all of
 The first deployment with this convention copies the existing protected
 `/etc/trackfusion/api.env` to `.env` atomically, preserves its credentials and
 unrecognized settings, replaces the retired frontend origin with
-`https://trackfusionweb.com`, and changes the production cookie policy to
+`https://www.trackfusionweb.com`, and changes the production cookie policy to
 `SameSite=Lax`. The old service definition and environment remain in the
 pre-deployment backup. `api.env` is removed from the live configuration only
 after the new service passes direct and Nginx health checks. The existing
@@ -185,7 +185,12 @@ configuration change takes effect only after `trackfusionweb-api` is restarted.
 For local development, copy the repository's `.env.example` to `.env`; that
 local file is ignored by Git and is unrelated to the host configuration.
 
-Production uses exact-origin CORS for `https://trackfusionweb.com`, secure
+If the persistent file already contains the apex frontend URL, update only
+`FRONTEND_URL` and `CORS_ALLOWED_ORIGINS` to
+`https://www.trackfusionweb.com` before the next deployment. Deployments do not
+rewrite an existing `.env` file.
+
+Production uses exact-origin CORS for `https://www.trackfusionweb.com`, secure
 host-only cookies, and `SameSite=Lax`. The frontend and API are different
 origins but the same HTTPS site, so credentialed requests remain compatible.
 Do not grant wildcard or regex access to Vercel previews. A preview requiring

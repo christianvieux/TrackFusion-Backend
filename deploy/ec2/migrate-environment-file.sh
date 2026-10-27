@@ -33,14 +33,16 @@ install -m 0600 "${source_file}" "${temporary_file}"
 # credential values, optional settings, and unrecognized variables remain
 # unchanged from the legacy configuration.
 sed -i \
-  -e 's|^FRONTEND_URL=https://trackfusionweb\.vercel\.app$|FRONTEND_URL=https://trackfusionweb.com|' \
-  -e 's|^CORS_ALLOWED_ORIGINS=https://trackfusionweb\.vercel\.app$|CORS_ALLOWED_ORIGINS=https://trackfusionweb.com|' \
+  -e 's|^FRONTEND_URL=https://trackfusionweb\.vercel\.app$|FRONTEND_URL=https://www.trackfusionweb.com|' \
+  -e 's|^FRONTEND_URL=https://trackfusionweb\.com$|FRONTEND_URL=https://www.trackfusionweb.com|' \
+  -e 's|^CORS_ALLOWED_ORIGINS=https://trackfusionweb\.vercel\.app$|CORS_ALLOWED_ORIGINS=https://www.trackfusionweb.com|' \
+  -e 's|^CORS_ALLOWED_ORIGINS=https://trackfusionweb\.com$|CORS_ALLOWED_ORIGINS=https://www.trackfusionweb.com|' \
   -e 's|^COOKIE_SAME_SITE=none$|COOKIE_SAME_SITE=lax|' \
   "${temporary_file}"
 
 for required_setting in \
-  'FRONTEND_URL=https://trackfusionweb.com' \
-  'CORS_ALLOWED_ORIGINS=https://trackfusionweb.com' \
+  'FRONTEND_URL=https://www.trackfusionweb.com' \
+  'CORS_ALLOWED_ORIGINS=https://www.trackfusionweb.com' \
   'COOKIE_SECURE=true' \
   'COOKIE_SAME_SITE=lax'; do
   if ! grep -Fqx "${required_setting}" "${temporary_file}"; then
@@ -48,7 +50,7 @@ for required_setting in \
     exit 1
   fi
 done
-if grep -Eq '^(FRONTEND_URL|CORS_ALLOWED_ORIGINS)=.*https://trackfusionweb\.vercel\.app' "${temporary_file}"; then
+if grep -Eq '^(FRONTEND_URL|CORS_ALLOWED_ORIGINS)=https://(trackfusionweb\.vercel\.app|trackfusionweb\.com)$' "${temporary_file}"; then
   echo "ERROR: the obsolete production frontend origin remains after migration." >&2
   exit 1
 fi
