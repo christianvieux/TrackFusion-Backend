@@ -79,6 +79,14 @@ const expectedColumns = {
     "created_at",
     "expires_at",
   ],
+  registration_grants: [
+    "id",
+    "email",
+    "grant_hash",
+    "used",
+    "created_at",
+    "expires_at",
+  ],
 };
 
 const expectedEnumLabels = {

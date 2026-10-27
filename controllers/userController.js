@@ -1,8 +1,6 @@
 // controllers/userController.js
-import { hashPassword } from '../utils/passwordUtils.js';
-import { queryToDatabase, withTransaction } from '../services/dbService.js';
-import { isEmailValid, normalizeEmail } from '../utils/emailUtils.js';
-import { consumeOtpCodeWithQuery } from '../utils/otpUtils.js';
+import { queryToDatabase } from '../services/dbService.js';
+import { normalizeEmail } from '../utils/emailUtils.js';
 
 export async function updateUserOnDatabase(userId, properties) {
   const query = `UPDATE users SET ${Object.keys(properties).map((key, index) => `${key} = $${index + 2}`).join(', ')} WHERE id = $1 RETURNING *`;
@@ -12,70 +10,6 @@ export async function updateUserOnDatabase(userId, properties) {
     return result.rows[0];
   } catch (error) {
     throw error;
-  }
-}
-
-function handleRegistrationError(error) {
-  if (error.code === '23505') {  // PostgreSQL unique violation error code
-    const conflictError = new Error("Username or email already exists");
-    conflictError.code = error.code;
-    throw conflictError;
-  }
-
-  // For any other error, rethrow it for generic handling
-  throw error;
-}
-
-export async function registerUser(
-  email,
-  username,
-  password,
-  otpCode,
-  profilePictureUrl = null,
-) {
-  try {
-    if (!email || !username || !password || !otpCode) {
-      throw new Error("Missing required fields");
-    }
-    const normalizedEmail = normalizeEmail(email);
-    const validation = await isEmailValid(normalizedEmail);
-    if (validation.error) {
-      throw new Error(validation.error);
-    }
-
-    const hashedPassword = await hashPassword(password);
-    const registration = await withTransaction(async (query) => {
-      const otpResult = await consumeOtpCodeWithQuery(
-        query,
-        normalizedEmail,
-        otpCode,
-        "registration",
-      );
-      if (!otpResult.isValid) {
-        return { otpError: otpResult.reason };
-      }
-
-      const result = await query(
-        `INSERT INTO users (
-           username, email, password_hash, profile_picture_url, is_verified, created_at
-         )
-         VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP)
-         RETURNING id, username, email, profile_picture_url, is_verified, created_at, updated_at`,
-        [username, normalizedEmail, hashedPassword, profilePictureUrl],
-      );
-      return { user: result.rows[0] };
-    });
-
-    if (registration.otpError) {
-      const error = new Error(registration.otpError);
-      error.code = "INVALID_OTP";
-      throw error;
-    }
-
-    return registration.user;
-  } catch (error) {
-    // Handle specific errors and throw them
-    handleRegistrationError(error);
   }
 }
 

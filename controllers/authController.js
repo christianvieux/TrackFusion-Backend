@@ -28,7 +28,7 @@ function logEmailFailure(message, error) {
   });
 }
 
-function initializeUserSession(req, res, userData) {
+export function establishUserSession(req, res, userData) {
   // Generate JWT token
   const token = jwt.sign({ id: userData.id }, process.env.JWT_SECRET, {
     expiresIn: "1h",
@@ -44,7 +44,7 @@ function initializeUserSession(req, res, userData) {
     email: userData.email,
   };
   
-  return res.status(200).json({ message: "Login successful", user: req.session.user});
+  return req.session.user;
 }
 
 export async function authorizeSession(req, res, userEmail) {
@@ -121,7 +121,8 @@ export async function login(req, res) {
     // Excluding the password (sensitive info)
     delete user.password_hash;
 
-    return initializeUserSession(req, res, user);
+    const sessionUser = establishUserSession(req, res, user);
+    return res.status(200).json({ message: "Login successful", user: sessionUser });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: error.message });

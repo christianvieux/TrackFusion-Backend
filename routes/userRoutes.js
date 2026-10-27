@@ -3,8 +3,8 @@ import express from "express";
 import {
   getPublicUserInfoFromId,
   isEmailRegistered,
-  registerUser,
 } from "../controllers/userController.js";
+import { register } from "../controllers/registrationController.js";
 import { otpLimiter } from "../middlewares/limiterConfig.js";
 import { formatValidationError } from '../utils/validationsUtils.js';
 import Joi from 'joi';
@@ -51,13 +51,14 @@ const registerSchema = Joi.object({
   otp_code: Joi.string()
     .length(6)
     .pattern(/^[0-9]+$/)
-    .required()
+    .optional()
     .messages({
       'string.empty': 'Verification code is required',
       'string.length': 'Verification code must be 6 digits',
       'string.pattern.base': 'Verification code must contain only numbers',
       'any.required': 'Verification code is required'
-    })
+    }),
+  registration_grant: Joi.string().min(32).max(256).optional(),
 });
 
 // Define the schema for validation
@@ -77,42 +78,15 @@ const router = express.Router();
 router.post("/register",
   otpLimiter,
   async (req, res) => {
-    const { email, username, password, otp_code } = req.body;
-    const { error, value } = registerSchema.validate({
-      email,
-      username,
-      password,
-      otp_code,
-    });
+    const { error, value } = registerSchema.validate(req.body);
 
     // Check if validation failed
     if (error) {
       return res.status(400).json({ error: formatValidationError(error) });
     }
 
-    try {
-      const result = await registerUser(
-        value.email,
-        value.username,
-        value.password,
-        value.otp_code,
-      );
-
-      res.status(201).json({ result, message: "Successfully registered the user!" });
-    } catch (error) {
-      let statusCode = 500;
-      let errorMessage = "Internal server error";
-
-      if (error.code === '23505') {
-        statusCode = 409;
-        errorMessage = "Username or email already exists";
-      } else if (error.code === "INVALID_OTP") {
-        statusCode = 400;
-        errorMessage = `Invalid verification code: ${error.message}`;
-      }
-
-      res.status(statusCode).json({ error: errorMessage });
-    }
+    req.body = value;
+    return register(req, res);
   }
 );
 

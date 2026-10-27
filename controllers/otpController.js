@@ -1,10 +1,11 @@
 // controllers/otpController.js
 import {
-  generateOtpCode,
-  isOtpCodeValid,
   isOtpCooldownActive,
 } from "../utils/otpUtils.js";
-import { isEmailRegistered } from "./userController.js";
+import {
+  startRegistration,
+  verifyRegistration,
+} from "../services/registrationService.js";
 import Joi from "joi";
 
 const otpIdentitySchema = Joi.object({
@@ -32,22 +33,9 @@ export async function generateOtp(req, res) {
   }
 
   try {
-    const { email, purpose } = value;
-    if (await isEmailRegistered(email)) {
-      return res.status(409).json({ error: "Email is already registered" });
-    }
-
-    const otpCode = await generateOtpCode(email, purpose);
-    const response = { message: "Verification code generated" };
-
-    if (
-      process.env.NODE_ENV === "development" &&
-      process.env.EXPOSE_OTP_IN_DEVELOPMENT === "true"
-    ) {
-      response.otpCode = otpCode;
-    }
-
-    res.status(200).json(response);
+    const { email } = value;
+    const registration = await startRegistration(email);
+    res.status(200).json({ message: registration.message });
   } catch (error) {
     console.error("Unable to generate verification code", {
       code: error.code || "OTP_GENERATION_FAILED",
@@ -71,16 +59,20 @@ export async function verifyOtp(req, res) {
   }
 
   try {
-    const { email, otp_code, purpose } = value;
-    const { isValid, reason } = await isOtpCodeValid(email, otp_code, purpose);
-    if (!isValid) {
-      return res.status(400).json({ error: `${reason}` });
-    }
-    res.status(200).json({ message: "OTP code is valid" });
+    const { email, otp_code } = value;
+    const verification = await verifyRegistration(email, otp_code);
+    req.session.registration = verification;
+    res.status(200).json({
+      message: "Email verified",
+      registrationGrant: verification.registrationGrant,
+    });
   } catch (error) {
     console.error("Unable to verify code", {
       code: error.code || "OTP_VERIFICATION_FAILED",
     });
+    if (error.code === "INVALID_OTP") {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: "Internal server error" });
   }
 }
