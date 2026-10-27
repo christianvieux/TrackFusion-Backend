@@ -32,7 +32,6 @@ trackUploadQueue.process("track", async (job) => {
   try {
     // Download track file from S3
     job.progress("Downloading track file...");
-    console.log(`Downloading file from S3: ${trackUrl.uploadUrl}`);
     const trackDownloadResult = await s3Service.downloadToTemp(trackUrl.key);
     tempFiles.push(trackDownloadResult.filePath);
 
@@ -85,8 +84,8 @@ trackUploadQueue.process("track", async (job) => {
       bpm: bpm || null,
       creator_id: userId,
       sound_type: normalizedMetadata.format || "unknown",
-      url: trackUrl.publicUrl,
-      image_url: imageUrl?.publicUrl,
+      url: trackUrl.key,
+      image_url: imageUrl?.key,
     };
 
     job.progress("Saving to database...");
@@ -96,8 +95,10 @@ trackUploadQueue.process("track", async (job) => {
     
     // Move the track file to its final location
     job.progress("Finalizing upload...");
+    let finalizedTrack;
+    let finalizedCover;
     try {
-      const finalizedTrack = await s3Service.finalizeTrackUpload(
+      finalizedTrack = await s3Service.finalizeTrackUpload(
         trackUrl.key,
         userId,
         uploadedTrack.id
@@ -105,7 +106,7 @@ trackUploadQueue.process("track", async (job) => {
       await updateTrackOnDatabase(uploadedTrack.id, { url: finalizedTrack.url });
     
       if (imageUrl) {
-        const finalizedCover = await s3Service.finalizeCoverArtUpload(
+        finalizedCover = await s3Service.finalizeCoverArtUpload(
           imageUrl.key,
           userId,
           uploadedTrack.id
@@ -121,7 +122,13 @@ trackUploadQueue.process("track", async (job) => {
 
     console.log("Track uploaded successfully:", uploadedTrack);
     
-    return uploadedTrack;
+    return {
+      ...uploadedTrack,
+      url: finalizedTrack.url,
+      image_url: finalizedCover
+        ? await s3Service.generateSecureUrl(finalizedCover.key)
+        : null,
+    };
   } catch (error) {
     console.error(`Job ${job.id} failed:`, error);
     throw error; // Propagate error to trigger job failure
@@ -178,7 +185,7 @@ profilePictureUploadQueue.process("profile-picture", async (job) => {
     job.progress("Upload complete!");
     console.log("Profile picture uploaded successfully:", updatedUser);
 
-    return finalizedImage.url;
+    return s3Service.generateSecureUrl(finalizedImage.key);
   } catch (error) {
     console.error(`Job ${job.id} failed:`, error);
     throw error; // Propagate error to trigger job failure

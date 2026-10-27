@@ -22,12 +22,13 @@ router.post(
         return res.status(400).json({ error: error.details[0].message });
       }
 
-      const { fileName } = value;
+      const { fileName, contentType } = value;
       const userId = req.user.id;
 
       // Get presigned URL
       const urls = await s3Service.getPresignedUploadUrl(userId, {
         fileName,
+        contentType,
         folder: "uploads",
       });
 

@@ -1,6 +1,7 @@
 // controllers/userController.js
 import { queryToDatabase } from '../services/dbService.js';
 import { normalizeEmail } from '../utils/emailUtils.js';
+import { authorizeMediaReference, authorizeTrackArtworkList } from '../services/mediaUrlService.js';
 
 export async function updateUserOnDatabase(userId, properties) {
   const query = `UPDATE users SET ${Object.keys(properties).map((key, index) => `${key} = $${index + 2}`).join(', ')} WHERE id = $1 RETURNING *`;
@@ -95,7 +96,11 @@ export async function getPublicUserInfoFromId(userId) {
 
   try {
     const result = await queryToDatabase(query, values);
-    return result.rows[0];
+    const user = result.rows[0];
+    if (user?.profile_picture_url) {
+      user.profile_picture_url = await authorizeMediaReference(user.profile_picture_url);
+    }
+    return user;
   } catch (error) {
     throw error;
   }
@@ -116,7 +121,7 @@ export async function getUserPublicFavoriteTracks(userId) {
   const values = [userId];
   try {
     const result = await queryToDatabase(query, values);
-    return result.rows;
+    return authorizeTrackArtworkList(result.rows);
   } catch (error) {
     throw error;
   }
@@ -136,7 +141,7 @@ export async function getUserPublicTracks(userId) {
   const values = [userId];
   try {
     const result = await queryToDatabase(query, values);
-    return result.rows;
+    return authorizeTrackArtworkList(result.rows);
   } catch (error) {
     throw error;
   }

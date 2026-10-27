@@ -43,8 +43,7 @@ const REQUIRED_ENVIRONMENT_VARIABLES = [
   "DATABASE_URL",
   "REDIS_URL",
   "PYTHON_EXECUTABLE",
-  "AWS_REGION",
-  "AWS_S3_BUCKET",
+  "STORAGE_PROVIDER",
   "AUDIO_MAX_LENGTH",
   "AUDIO_MAX_FILE_SIZE",
   "IMAGE_MAX_FILE_SIZE",
@@ -155,6 +154,33 @@ export function validateEnvironment() {
   validateUrl("DATABASE_URL", ["postgres:", "postgresql:"]);
   validateUrl("REDIS_URL", ["redis:", "rediss:"]);
 
+  if (!["aws-s3", "s3-compatible"].includes(process.env.STORAGE_PROVIDER)) {
+    throw new Error("STORAGE_PROVIDER must be aws-s3 or s3-compatible");
+  }
+
+  const storageRegion = process.env.STORAGE_REGION || process.env.AWS_REGION;
+  const storageBucket = process.env.STORAGE_BUCKET || process.env.AWS_S3_BUCKET;
+  if (!storageRegion?.trim() || !storageBucket?.trim()) {
+    throw new Error(
+      "Storage requires STORAGE_REGION and STORAGE_BUCKET (or the AWS_REGION and AWS_S3_BUCKET compatibility names)",
+    );
+  }
+
+  if (process.env.STORAGE_PROVIDER === "s3-compatible") {
+    for (const name of [
+      "STORAGE_ENDPOINT",
+      "STORAGE_PUBLIC_ENDPOINT",
+      "STORAGE_ACCESS_KEY_ID",
+      "STORAGE_SECRET_ACCESS_KEY",
+    ]) {
+      if (!process.env[name]?.trim()) {
+        throw new Error(`${name} is required for s3-compatible storage`);
+      }
+    }
+    validateUrl("STORAGE_ENDPOINT", ["http:", "https:"]);
+    validateUrl("STORAGE_PUBLIC_ENDPOINT", ["http:", "https:"]);
+  }
+
   const corsOrigins = process.env.CORS_ALLOWED_ORIGINS.split(",").map((origin) =>
     validateOrigin("CORS_ALLOWED_ORIGINS", origin.trim()),
   );
@@ -180,6 +206,9 @@ export function validateEnvironment() {
   }
 
   if (process.env.NODE_ENV === "production") {
+    if (process.env.STORAGE_PROVIDER !== "aws-s3") {
+      throw new Error("STORAGE_PROVIDER must be aws-s3 in production");
+    }
     if (process.env.COOKIE_SECURE !== "true") {
       throw new Error("COOKIE_SECURE must be true in production");
     }

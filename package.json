@@ -11,6 +11,8 @@
     "dev": "nodemon index.js",
     "db:init": "node scripts/initDatabase.js",
     "db:verify": "node scripts/verifyDatabase.js",
+    "storage:init": "node scripts/initStorage.js",
+    "storage:verify": "node scripts/verifyStorage.js",
     "aws:verify": "node scripts/verifyS3Access.js",
     "smoke": "node scripts/smokeApi.js",
     "test": "jest"

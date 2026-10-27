@@ -7,12 +7,9 @@ import {
   profilePictureUploadQueue,
 } from "../queue/uploadQueue.js";
 import { authenticateToken } from "../middlewares/authMiddleware.js";
+import { belongsToUserUpload } from "../services/s3Service.js";
 
 const router = express.Router();
-
-function belongsToUserUpload(key, userId) {
-  return key.startsWith(`uploads/${userId}/`);
-}
 
 const uploadTrackSchema = Joi.object({
   trackUrl: Joi.object({

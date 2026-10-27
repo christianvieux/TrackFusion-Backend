@@ -28,6 +28,39 @@ services:
       retries: 10
     restart: unless-stopped
 
+  storage:
+    image: chrislusf/seaweedfs:4.51
+    command: ["mini", "-dir=/data", "-ip=storage", "-ip.bind=0.0.0.0"]
+    environment:
+      AWS_ACCESS_KEY_ID: trackfusion-local
+      AWS_SECRET_ACCESS_KEY: trackfusion-local-secret
+      S3_BUCKET: trackfusionweb-local
+    volumes:
+      - storage_data:/data
+    ports:
+      - "127.0.0.1:9000:8333"
+    restart: unless-stopped
+
+  storage-init:
+    build:
+      context: .
+      target: runtime
+    environment:
+      STORAGE_PROVIDER: s3-compatible
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: trackfusionweb-local
+      STORAGE_ENDPOINT: http://storage:8333
+      STORAGE_PUBLIC_ENDPOINT: http://127.0.0.1:9000
+      STORAGE_ACCESS_KEY_ID: trackfusion-local
+      STORAGE_SECRET_ACCESS_KEY: trackfusion-local-secret
+      STORAGE_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3001}
+      AWS_REGION: us-east-1
+      AWS_S3_BUCKET: trackfusionweb-local
+    depends_on:
+      - storage
+    command: ["node", "scripts/initStorage.js"]
+    restart: "no"
+
   api:
     build:
       context: .
@@ -45,11 +78,21 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      STORAGE_PROVIDER: s3-compatible
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: trackfusionweb-local
+      STORAGE_ENDPOINT: http://storage:8333
+      STORAGE_PUBLIC_ENDPOINT: http://127.0.0.1:9000
+      STORAGE_ACCESS_KEY_ID: trackfusion-local
+      STORAGE_SECRET_ACCESS_KEY: trackfusion-local-secret
+      STORAGE_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3001}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     command: ["sh", "-c", "node scripts/initDatabase.js && exec node index.js"]
     ports:
       - "127.0.0.1:8081:8081"
@@ -58,4 +101,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
-
+  storage_data:

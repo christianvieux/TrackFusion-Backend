@@ -14,6 +14,7 @@ const validEnvironment = {
   DATABASE_URL: "postgresql://user:password@localhost:5432/trackfusionweb_db",
   REDIS_URL: "redis://127.0.0.1:6379",
   PYTHON_EXECUTABLE: "venv/bin/python",
+  STORAGE_PROVIDER: "aws-s3",
   AWS_REGION: "us-east-1",
   AWS_S3_BUCKET: "trackfusionweb-api-test-bucket",
   AUDIO_MAX_LENGTH: "900",
@@ -159,5 +160,40 @@ test("requires a usable local email flow", () => {
 
   expect(() => validateEnvironment()).toThrow(
     "Development without email delivery requires both development token exposure flags",
+  );
+});
+
+test("requires explicit credentials and endpoints for local compatible storage", () => {
+  process.env.STORAGE_PROVIDER = "s3-compatible";
+
+  expect(() => validateEnvironment()).toThrow(
+    "STORAGE_ENDPOINT is required for s3-compatible storage",
+  );
+});
+
+test("accepts explicit local S3-compatible storage configuration", () => {
+  Object.assign(process.env, {
+    STORAGE_PROVIDER: "s3-compatible",
+    STORAGE_ENDPOINT: "http://storage:8333",
+    STORAGE_PUBLIC_ENDPOINT: "http://127.0.0.1:9000",
+    STORAGE_ACCESS_KEY_ID: "local-access-key",
+    STORAGE_SECRET_ACCESS_KEY: "local-secret-key",
+  });
+
+  expect(validateEnvironment()).toEqual({ port: 8081 });
+});
+
+test("prevents production from pointing at a local compatible provider", () => {
+  configureValidProductionEnvironment();
+  process.env.STORAGE_PROVIDER = "s3-compatible";
+  Object.assign(process.env, {
+    STORAGE_ENDPOINT: "http://storage:8333",
+    STORAGE_PUBLIC_ENDPOINT: "http://127.0.0.1:9000",
+    STORAGE_ACCESS_KEY_ID: "local-access-key",
+    STORAGE_SECRET_ACCESS_KEY: "local-secret-key",
+  });
+
+  expect(() => validateEnvironment()).toThrow(
+    "STORAGE_PROVIDER must be aws-s3 in production",
   );
 });
