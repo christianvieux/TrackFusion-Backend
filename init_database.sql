@@ -215,10 +215,11 @@ ALTER TABLE public.password_reset_tokens
 ALTER TABLE public.otp_codes
   ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0,
   ALTER COLUMN code_hash TYPE text;
-DELETE FROM public.otp_codes WHERE purpose <> 'registration';
 ALTER TABLE public.otp_codes DROP CONSTRAINT IF EXISTS valid_purposes;
 ALTER TABLE public.otp_codes
-  ADD CONSTRAINT valid_purposes CHECK (purpose = 'registration');
+  ADD CONSTRAINT valid_purposes CHECK (
+    purpose IN ('registration', 'reset_password', 'verification')
+  );
 UPDATE public.otp_codes
    SET code_hash = encode(sha256(code_hash::bytea), 'hex'),
        is_valid = FALSE,

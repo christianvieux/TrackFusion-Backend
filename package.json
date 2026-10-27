@@ -13,6 +13,7 @@
     "db:verify": "node scripts/verifyDatabase.js",
     "storage:init": "node scripts/initStorage.js",
     "storage:verify": "node scripts/verifyStorage.js",
+    "registration:verify": "node scripts/verifyLocalRegistration.js",
     "aws:verify": "node scripts/verifyS3Access.js",
     "smoke": "node scripts/smokeApi.js",
     "test": "jest"
