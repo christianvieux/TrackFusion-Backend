@@ -61,6 +61,8 @@ FRONTEND_URL=http://www.trackfusionweb.com
 CORS_ALLOWED_ORIGINS=http://www.trackfusionweb.com
 COOKIE_SECURE=true
 COOKIE_SAME_SITE=lax
+STORAGE_PROVIDER=aws-s3
+EMAIL_PROVIDER=resend
 EOF
 
   cat > "${config_directory}/.env" <<'EOF'

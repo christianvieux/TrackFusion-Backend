@@ -26,6 +26,8 @@ required_settings=(
   CORS_ALLOWED_ORIGINS
   COOKIE_SECURE
   COOKIE_SAME_SITE
+  STORAGE_PROVIDER
+  EMAIL_PROVIDER
 )
 
 while IFS= read -r line || [[ -n ${line} ]]; do
@@ -39,7 +41,7 @@ while IFS= read -r line || [[ -n ${line} ]]; do
 
   setting_name=${BASH_REMATCH[1]}
   case ${setting_name} in
-    FRONTEND_URL|CORS_ALLOWED_ORIGINS|COOKIE_SECURE|COOKIE_SAME_SITE) ;;
+    FRONTEND_URL|CORS_ALLOWED_ORIGINS|COOKIE_SECURE|COOKIE_SAME_SITE|STORAGE_PROVIDER|EMAIL_PROVIDER) ;;
     *)
       echo "ERROR: ${setting_name} is not an approved deployment-managed setting." >&2
       exit 1

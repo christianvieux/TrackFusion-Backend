@@ -54,8 +54,10 @@ jobs:
       PYTHON_EXECUTABLE: python
       AWS_REGION: us-east-1
       AWS_S3_BUCKET: trackfusionweb-api-ci-placeholder
+      STORAGE_PROVIDER: aws-s3
       COOKIE_SECURE: "false"
       COOKIE_SAME_SITE: lax
+      EMAIL_PROVIDER: disabled
       EMAIL_DELIVERY_ENABLED: "false"
       EMAIL_VALIDATE_MX: "false"
       EXPOSE_OTP_IN_DEVELOPMENT: "false"
