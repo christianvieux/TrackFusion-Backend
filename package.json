@@ -41,6 +41,7 @@
     "multer": "^2.5.0",
     "music-metadata": "^12.2.3",
     "node-cache": "^5.1.2",
+    "nodemailer": "^10.2.1",
     "pg": "^8.16.0",
     "redis": "^6.3.0",
     "resend": "^6.34.1",

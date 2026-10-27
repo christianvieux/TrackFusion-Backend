@@ -1,11 +1,17 @@
 const mockSend = jest.fn();
 const mockResendConstructor = jest.fn();
+const mockSmtpSend = jest.fn();
+const mockCreateTransport = jest.fn(() => ({ sendMail: mockSmtpSend }));
 
 jest.mock("resend", () => ({
   Resend: function MockResend(apiKey) {
     mockResendConstructor(apiKey);
     this.emails = { send: mockSend };
   },
+}));
+jest.mock("nodemailer", () => ({
+  __esModule: true,
+  default: { createTransport: (...args) => mockCreateTransport(...args) },
 }));
 
 import {
@@ -20,9 +26,11 @@ beforeEach(() => {
   process.env = {
     ...originalEnvironment,
     EMAIL_DELIVERY_ENABLED: "true",
+    EMAIL_PROVIDER: "resend",
     RESEND_API_KEY: "test-resend-key",
   };
   mockSend.mockResolvedValue({ data: { id: "email-id" }, error: null });
+  mockSmtpSend.mockResolvedValue({ messageId: "smtp-message-id" });
 });
 
 afterAll(() => {
@@ -79,4 +87,26 @@ test("sanitizes network errors thrown by the provider SDK", async () => {
     message: "Transactional email delivery failed",
     code: "EMAIL_DELIVERY_FAILED",
   });
+});
+
+test("sends local development email through SMTP", async () => {
+  Object.assign(process.env, {
+    EMAIL_PROVIDER: "smtp",
+    SMTP_HOST: "mailpit",
+    SMTP_PORT: "1025",
+    SMTP_SECURE: "false",
+  });
+
+  await sendVerificationEmail("listener@example.com", "123456");
+
+  expect(mockCreateTransport).toHaveBeenCalledWith(
+    expect.objectContaining({ host: "mailpit", port: 1025, secure: false }),
+  );
+  expect(mockSmtpSend).toHaveBeenCalledWith(
+    expect.objectContaining({
+      to: "listener@example.com",
+      subject: "Verify your TrackFusionWeb email",
+    }),
+  );
+  expect(mockSend).not.toHaveBeenCalled();
 });

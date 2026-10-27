@@ -1,16 +1,41 @@
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 const FROM_ADDRESS = "TrackFusionWeb <verify@mail.trackfusionweb.com>";
 const DELIVERY_TIMEOUT_MS = 10_000;
 
 let resendClient;
+let smtpClient;
 
-function getClient() {
+function getResendClient() {
   if (!resendClient) {
     resendClient = new Resend(process.env.RESEND_API_KEY);
   }
 
   return resendClient;
+}
+
+function getSmtpClient() {
+  if (!smtpClient) {
+    smtpClient = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number.parseInt(process.env.SMTP_PORT, 10),
+      secure: process.env.SMTP_SECURE === "true",
+      connectionTimeout: DELIVERY_TIMEOUT_MS,
+      greetingTimeout: DELIVERY_TIMEOUT_MS,
+      socketTimeout: DELIVERY_TIMEOUT_MS,
+      ...(process.env.SMTP_USERNAME
+        ? {
+            auth: {
+              user: process.env.SMTP_USERNAME,
+              pass: process.env.SMTP_PASSWORD,
+            },
+          }
+        : {}),
+    });
+  }
+
+  return smtpClient;
 }
 
 function escapeHtml(value) {
@@ -29,16 +54,15 @@ async function sendEmail({ to, subject, text, html }) {
 
   let error;
   try {
-    ({ error } = await getClient().emails.send(
-      {
-        from: FROM_ADDRESS,
-        to,
-        subject,
-        text,
-        html,
-      },
-      { signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS) },
-    ));
+    const message = { from: FROM_ADDRESS, to, subject, text, html };
+    if (process.env.EMAIL_PROVIDER === "smtp") {
+      await getSmtpClient().sendMail(message);
+    } else {
+      ({ error } = await getResendClient().emails.send(
+        message,
+        { signal: AbortSignal.timeout(DELIVERY_TIMEOUT_MS) },
+      ));
+    }
   } catch (providerError) {
     error = providerError;
   }

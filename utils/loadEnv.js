@@ -51,6 +51,7 @@ const REQUIRED_ENVIRONMENT_VARIABLES = [
   "ALLOWED_IMAGE_TYPES",
   "COOKIE_SECURE",
   "COOKIE_SAME_SITE",
+  "EMAIL_PROVIDER",
   "EMAIL_DELIVERY_ENABLED",
   "EMAIL_VALIDATE_MX",
   "EXPOSE_OTP_IN_DEVELOPMENT",
@@ -186,11 +187,35 @@ export function validateEnvironment() {
   );
 
   const emailDeliveryEnabled = process.env.EMAIL_DELIVERY_ENABLED === "true";
+  if (!["resend", "smtp", "disabled"].includes(process.env.EMAIL_PROVIDER)) {
+    throw new Error("EMAIL_PROVIDER must be resend, smtp, or disabled");
+  }
   if (emailDeliveryEnabled) {
-    if (!process.env.RESEND_API_KEY?.trim()) {
+    if (process.env.EMAIL_PROVIDER === "disabled") {
+      throw new Error("EMAIL_PROVIDER cannot be disabled when email delivery is enabled");
+    }
+    if (
+      process.env.EMAIL_PROVIDER === "resend" &&
+      !process.env.RESEND_API_KEY?.trim()
+    ) {
       throw new Error(
         "RESEND_API_KEY is required when email delivery is enabled",
       );
+    }
+    if (process.env.EMAIL_PROVIDER === "smtp") {
+      if (!process.env.SMTP_HOST?.trim()) {
+        throw new Error("SMTP_HOST is required for SMTP email delivery");
+      }
+      if (!/^\d+$/.test(process.env.SMTP_PORT || "")) {
+        throw new Error("SMTP_PORT must be an integer between 1 and 65535");
+      }
+      const smtpPort = Number(process.env.SMTP_PORT);
+      if (smtpPort < 1 || smtpPort > 65535) {
+        throw new Error("SMTP_PORT must be an integer between 1 and 65535");
+      }
+      if (!['true', 'false'].includes(process.env.SMTP_SECURE || "")) {
+        throw new Error("SMTP_SECURE must be true or false");
+      }
     }
   }
 
@@ -208,6 +233,9 @@ export function validateEnvironment() {
   if (process.env.NODE_ENV === "production") {
     if (process.env.STORAGE_PROVIDER !== "aws-s3") {
       throw new Error("STORAGE_PROVIDER must be aws-s3 in production");
+    }
+    if (process.env.EMAIL_PROVIDER !== "resend") {
+      throw new Error("EMAIL_PROVIDER must be resend in production");
     }
     if (process.env.COOKIE_SECURE !== "true") {
       throw new Error("COOKIE_SECURE must be true in production");

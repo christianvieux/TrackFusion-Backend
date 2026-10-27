@@ -24,6 +24,7 @@ const validEnvironment = {
   ALLOWED_IMAGE_TYPES: "image/jpeg,image/png",
   COOKIE_SECURE: "false",
   COOKIE_SAME_SITE: "lax",
+  EMAIL_PROVIDER: "disabled",
   EMAIL_DELIVERY_ENABLED: "false",
   EMAIL_VALIDATE_MX: "false",
   EXPOSE_OTP_IN_DEVELOPMENT: "true",
@@ -36,6 +37,7 @@ function configureValidProductionEnvironment() {
     SESSION_SECRET: "s".repeat(32),
     JWT_SECRET: "j".repeat(32),
     EMAIL_DELIVERY_ENABLED: "false",
+    EMAIL_PROVIDER: "resend",
     EXPOSE_OTP_IN_DEVELOPMENT: "false",
     EXPOSE_RESET_TOKEN_IN_DEVELOPMENT: "false",
     FRONTEND_URL: "https://www.trackfusionweb.com",
@@ -90,6 +92,7 @@ test("allows production startup with email-dependent features disabled", () => {
 });
 
 test("requires the Resend API key when email delivery is enabled", () => {
+  process.env.EMAIL_PROVIDER = "resend";
   process.env.EMAIL_DELIVERY_ENABLED = "true";
   delete process.env.RESEND_API_KEY;
 
@@ -160,6 +163,34 @@ test("requires a usable local email flow", () => {
 
   expect(() => validateEnvironment()).toThrow(
     "Development without email delivery requires both development token exposure flags",
+  );
+});
+
+test("accepts explicit local SMTP delivery", () => {
+  Object.assign(process.env, {
+    EMAIL_PROVIDER: "smtp",
+    EMAIL_DELIVERY_ENABLED: "true",
+    SMTP_HOST: "mailpit",
+    SMTP_PORT: "1025",
+    SMTP_SECURE: "false",
+    EXPOSE_OTP_IN_DEVELOPMENT: "false",
+    EXPOSE_RESET_TOKEN_IN_DEVELOPMENT: "false",
+  });
+
+  expect(validateEnvironment()).toEqual({ port: 8081 });
+});
+
+test("prevents production from selecting local SMTP", () => {
+  configureValidProductionEnvironment();
+  Object.assign(process.env, {
+    EMAIL_PROVIDER: "smtp",
+    SMTP_HOST: "mailpit",
+    SMTP_PORT: "1025",
+    SMTP_SECURE: "false",
+  });
+
+  expect(() => validateEnvironment()).toThrow(
+    "EMAIL_PROVIDER must be resend in production",
   );
 });
 
