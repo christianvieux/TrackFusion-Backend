@@ -32,8 +32,12 @@ if [[ ! -d ${app_directory} ]]; then
   echo "ERROR: the current application directory does not exist." >&2
   exit 1
 fi
-if [[ ! -f ${config_directory}/secrets.env || ! -f ${config_directory}/api.env ]]; then
+if [[ ! -f ${config_directory}/.env && ! -f ${config_directory}/api.env ]]; then
   echo "ERROR: production configuration is incomplete; refusing to deploy without backing it up." >&2
+  exit 1
+fi
+if [[ -L ${config_directory}/.env || -L ${config_directory}/api.env ]]; then
+  echo "ERROR: production environment files must not be symbolic links." >&2
   exit 1
 fi
 database_exists=$(runuser -u postgres -- psql --dbname=postgres --tuples-only --no-align \

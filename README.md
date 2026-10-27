@@ -145,6 +145,53 @@ Production deployment is an explicit GitHub Actions dispatch from `main` through
 6. Restores the previous application release automatically if installation or health checks fail.
 7. Verifies the public HTTPS API and removes the temporary deployment artifact.
 
+### Production environment
+
+The production environment is stored only on the EC2 host at
+`/etc/trackfusion/.env`. It is owned by `root`, has mode `0600`, and is loaded
+explicitly by the systemd unit; releases never copy it into the application
+directory or regenerate it. Routine deployments back up all of
+`/etc/trackfusion` with the release and preserve `.env` unchanged.
+
+The first deployment with this convention copies the existing protected
+`/etc/trackfusion/api.env` to `.env` atomically, preserves its credentials and
+unrecognized settings, replaces the retired frontend origin with
+`https://trackfusionweb.com`, and changes the production cookie policy to
+`SameSite=Lax`. The old service definition and environment remain in the
+pre-deployment backup. `api.env` is removed from the live configuration only
+after the new service passes direct and Nginx health checks. The existing
+`secrets.env` may remain as a protected legacy recovery artifact, but it is not
+loaded by the current service and `.env` is authoritative.
+
+A rebuilt host must restore `.env` from a protected backup before deployment.
+The configuration script deliberately refuses to invent a missing production
+file or generate replacement database and authentication secrets.
+
+To change a production setting, edit the host file with `sudoedit`, retain a
+protected copy until verification is complete, validate it, restart the
+service, and check health:
+
+```bash
+sudoedit /etc/trackfusion/.env
+sudo chown root:root /etc/trackfusion/.env
+sudo chmod 0600 /etc/trackfusion/.env
+sudo /usr/local/bin/node --env-file=/etc/trackfusion/.env /opt/trackfusion/api/scripts/validateEnvironment.js
+sudo systemctl restart trackfusionweb-api
+curl -fsS https://api.trackfusionweb.com/health
+```
+
+Never print, source, commit, or place this file in a release directory. A
+configuration change takes effect only after `trackfusionweb-api` is restarted.
+For local development, copy the repository's `.env.example` to `.env`; that
+local file is ignored by Git and is unrelated to the host configuration.
+
+Production uses exact-origin CORS for `https://trackfusionweb.com`, secure
+host-only cookies, and `SameSite=Lax`. The frontend and API are different
+origins but the same HTTPS site, so credentialed requests remain compatible.
+Do not grant wildcard or regex access to Vercel previews. A preview requiring
+authentication should use an isolated non-production API with its exact preview
+origin explicitly configured.
+
 ## Security
 
 - Passwords are hashed with bcrypt; reset tokens are time-limited and single-use.
@@ -153,7 +200,7 @@ Production deployment is an explicit GitHub Actions dispatch from `main` through
 - S3 public access is blocked. Upload and playback access use expiring signed URLs and user-scoped object keys.
 - EC2 uses an IAM role, while GitHub uses OIDC. Neither deployment path requires long-lived AWS keys in the repository.
 - Only ports 80 and 443 are public for application traffic; SSH is restricted to a configured address.
-- Production secrets are stored in a root-readable environment file on the host and are excluded from release artifacts.
+- Production secrets are stored in the root-readable `/etc/trackfusion/.env` on the host and are excluded from release artifacts.
 
 ## Future improvements
 

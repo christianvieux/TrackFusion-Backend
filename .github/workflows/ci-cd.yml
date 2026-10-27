@@ -97,6 +97,7 @@ jobs:
       - name: Run unit and Python syntax tests
         run: |
           npm test -- --runInBand
+          bash deploy/ec2/tests/environment-config.test.sh
           python -m compileall -q python
 
       - name: Verify database schema and live API

@@ -37,14 +37,16 @@ fi
 
 for required_path in \
   "${backup_directory}/release" \
-  "${backup_directory}/config/secrets.env" \
-  "${backup_directory}/config/api.env" \
   "${backup_directory}/postgresql.dump"; do
   if [[ ! -e ${required_path} ]]; then
     echo "ERROR: rollback backup is incomplete: ${required_path}" >&2
     exit 1
   fi
 done
+if [[ ! -f ${backup_directory}/config/.env && ! -f ${backup_directory}/config/api.env ]]; then
+  echo "ERROR: rollback backup has no recognized production environment file." >&2
+  exit 1
+fi
 
 for command_name in curl nginx rsync systemctl; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
@@ -125,7 +127,14 @@ restore_path "${backup_directory}/host/nginx/sites-enabled/default" \
 chown -R trackfusion:trackfusion "${app_directory}"
 chown -R root:root "${config_directory}"
 chmod 0700 "${config_directory}"
-chmod 0600 "${config_directory}/secrets.env" "${config_directory}/api.env"
+for protected_file in \
+  "${config_directory}/.env" \
+  "${config_directory}/api.env" \
+  "${config_directory}/secrets.env"; do
+  if [[ -f ${protected_file} ]]; then
+    chmod 0600 "${protected_file}"
+  fi
+done
 
 nginx -t
 systemctl daemon-reload

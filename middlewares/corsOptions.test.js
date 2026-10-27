@@ -5,8 +5,8 @@ beforeEach(() => {
   process.env = {
     ...originalEnvironment,
     NODE_ENV: "production",
-    FRONTEND_URL: "https://trackfusionweb.vercel.app",
-    CORS_ALLOWED_ORIGINS: "https://trackfusionweb.vercel.app",
+    FRONTEND_URL: "https://trackfusionweb.com",
+    CORS_ALLOWED_ORIGINS: "https://trackfusionweb.com",
   };
 });
 
@@ -18,10 +18,23 @@ test("allows the exact production frontend with credentials", async () => {
   const { corsOptions } = await import("./corsOptions.js");
   const callback = jest.fn();
 
-  corsOptions.origin("https://trackfusionweb.vercel.app", callback);
+  corsOptions.origin("https://trackfusionweb.com", callback);
 
   expect(callback).toHaveBeenCalledWith(null, true);
   expect(corsOptions.credentials).toBe(true);
+});
+
+test("rejects the retired Vercel production origin", async () => {
+  const { corsOptions } = await import("./corsOptions.js");
+  const callback = jest.fn();
+
+  corsOptions.origin("https://trackfusionweb.vercel.app", callback);
+
+  const [error] = callback.mock.calls[0];
+  expect(error).toMatchObject({
+    status: 403,
+    code: "CORS_ORIGIN_DENIED",
+  });
 });
 
 test("rejects an unlisted browser origin", async () => {

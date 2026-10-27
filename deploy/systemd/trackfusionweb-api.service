@@ -8,7 +8,7 @@ Type=simple
 User=trackfusion
 Group=trackfusion
 WorkingDirectory=/opt/trackfusion/api
-EnvironmentFile=/etc/trackfusion/api.env
+EnvironmentFile=/etc/trackfusion/.env
 ExecStart=/usr/local/bin/node /opt/trackfusion/api/index.js
 Restart=on-failure
 RestartSec=5
@@ -24,4 +24,3 @@ LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
-

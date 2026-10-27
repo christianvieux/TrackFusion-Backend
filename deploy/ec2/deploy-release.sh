@@ -34,11 +34,14 @@ wait_for_health() {
 for required_path in \
   "${staging_directory}/package-lock.json" \
   "${staging_directory}/requirements.txt" \
+  "${staging_directory}/scripts/validateEnvironment.js" \
   "${staging_directory}/deploy/ec2/backup-release.sh" \
   "${staging_directory}/deploy/ec2/check-api-health.sh" \
   "${staging_directory}/deploy/ec2/configure-app.sh" \
+  "${staging_directory}/deploy/ec2/migrate-environment-file.sh" \
   "${staging_directory}/deploy/ec2/prune-release-backups.sh" \
-  "${staging_directory}/deploy/ec2/rollback-release.sh"; do
+  "${staging_directory}/deploy/ec2/rollback-release.sh" \
+  "${staging_directory}/deploy/systemd/trackfusionweb-api.service"; do
   if [[ ! -f ${required_path} ]]; then
     echo "ERROR: release is missing required file: ${required_path}" >&2
     exit 1
@@ -108,6 +111,23 @@ if ! wait_for_health; then
 fi
 
 echo "Release ${release_id} passed all health checks." >&2
+
+# The pre-deployment backup contains the legacy file and systemd unit. Remove
+# api.env only after the new unit has loaded .env and passed both health checks.
+canonical_environment=/etc/trackfusion/.env
+legacy_environment=/etc/trackfusion/api.env
+installed_service=/etc/systemd/system/trackfusionweb-api.service
+if [[ -f ${legacy_environment} ]]; then
+  if [[ ! -f ${canonical_environment} ]] || \
+     ! grep -Fqx 'EnvironmentFile=/etc/trackfusion/.env' "${installed_service}" || \
+     [[ ! -f ${backup_directory}/config/api.env ]]; then
+    echo "ERROR: refusing to finalize the environment migration without a verified canonical file and legacy backup." >&2
+    exit 1
+  fi
+  rm -f -- "${legacy_environment}"
+  echo "Production environment migration finalized; the protected release backup retains api.env for recovery." >&2
+fi
+
 if ! bash "${app_directory}/deploy/ec2/prune-release-backups.sh" 3; then
   echo "WARNING: release succeeded, but expired backups could not be pruned." >&2
 fi

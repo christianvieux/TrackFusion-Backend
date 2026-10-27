@@ -20,7 +20,7 @@ function normalizeSameSite(value) {
     return sameSite;
   }
 
-  return isProduction ? "none" : "lax";
+  return "lax";
 }
 
 const sameSite = normalizeSameSite(process.env.COOKIE_SAME_SITE);
