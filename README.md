@@ -141,7 +141,7 @@ Production deployment is an explicit GitHub Actions dispatch from `main` through
 2. Exchanges GitHub's OIDC identity for short-lived, scoped AWS credentials.
 3. Uploads a release archive to S3 and verifies its SHA-256 checksum on EC2.
 4. Runs the deployment through AWS Systems Manager instead of SSH.
-5. Creates a local backup, installs dependencies, verifies the schema, and checks application and Nginx health.
+5. Reconciles and validates managed configuration before downtime, then creates a local backup, installs dependencies, verifies the schema, and checks application and Nginx health.
 6. Restores the previous application release automatically if installation or health checks fail.
 7. Verifies the public HTTPS API and removes the temporary deployment artifact.
 
@@ -149,27 +149,38 @@ Production deployment is an explicit GitHub Actions dispatch from `main` through
 
 The production environment is stored only on the EC2 host at
 `/etc/trackfusion/.env`. It is owned by `root`, has mode `0600`, and is loaded
-explicitly by the systemd unit; releases never copy it into the application
-directory or regenerate it. Routine deployments back up all of
-`/etc/trackfusion` with the release and preserve `.env` unchanged.
+explicitly by the systemd unit. Secrets, unknown variables, and
+instance-specific settings remain operator-managed in that file and are never
+generated from repository examples.
 
-The first deployment with this convention copies the existing protected
-`/etc/trackfusion/api.env` to `.env` atomically, preserves its credentials and
-unrecognized settings, replaces the retired frontend origin with
-`https://www.trackfusionweb.com`, and changes the production cookie policy to
-`SameSite=Lax`. The old service definition and environment remain in the
-pre-deployment backup. `api.env` is removed from the live configuration only
-after the new service passes direct and Nginx health checks. The existing
-`secrets.env` may remain as a protected legacy recovery artifact, but it is not
-loaded by the current service and `.env` is authoritative.
+The tracked [`deploy/ec2/production-managed.env`](deploy/ec2/production-managed.env)
+file is the source of truth for the small allowlist of deployment-managed,
+non-secret settings: the frontend URL, API CORS origin, and cookie security and
+same-site policies. A deployment copies the existing host environment to a
+root-protected temporary directory, reconciles only those allowlisted keys,
+and validates the candidate with the incoming release while the current API is
+still healthy. Invalid candidates abort without stopping or changing the
+running service. Reconciliation is idempotent and never sources the environment
+file or prints its values.
 
-A rebuilt host must restore `.env` from a protected backup before deployment.
-The configuration script deliberately refuses to invent a missing production
-file or generate replacement database and authentication secrets.
+After candidate validation, deployment stops the service, backs up the current
+application and all of `/etc/trackfusion`, verifies that the source environment
+did not change during preflight, and atomically installs the candidate. Any
+later failure restores the prior application and configuration. The first
+deployment may use the protected legacy `/etc/trackfusion/api.env` as its
+source; that file is removed only after the new service passes direct and Nginx
+health checks. The existing `secrets.env` remains a protected recovery artifact
+and is not loaded by the current service.
 
-To change a production setting, edit the host file with `sudoedit`, retain a
-protected copy until verification is complete, validate it, restart the
-service, and check health:
+A rebuilt host must restore `.env` (or the legacy `api.env`) from a protected
+backup before deployment. The deployment scripts deliberately refuse to invent
+a missing production file or generate replacement database and authentication
+secrets.
+
+Change deployment-managed settings in `production-managed.env` through normal
+review and deployment. To change an operator-managed or instance-specific
+setting, edit the host file with `sudoedit`, retain a protected copy until
+verification is complete, validate it, restart the service, and check health:
 
 ```bash
 sudoedit /etc/trackfusion/.env
@@ -184,11 +195,6 @@ Never print, source, commit, or place this file in a release directory. A
 configuration change takes effect only after `trackfusionweb-api` is restarted.
 For local development, copy the repository's `.env.example` to `.env`; that
 local file is ignored by Git and is unrelated to the host configuration.
-
-If the persistent file already contains the apex frontend URL, update only
-`FRONTEND_URL` and `CORS_ALLOWED_ORIGINS` to
-`https://www.trackfusionweb.com` before the next deployment. Deployments do not
-rewrite an existing `.env` file.
 
 Production uses exact-origin CORS for `https://www.trackfusionweb.com`, secure
 host-only cookies, and `SameSite=Lax`. The frontend and API are different

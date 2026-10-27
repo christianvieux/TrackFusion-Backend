@@ -9,7 +9,6 @@ fi
 app_directory=/opt/trackfusion/api
 config_directory=/etc/trackfusion
 secrets_file="${config_directory}/secrets.env"
-legacy_environment_file="${config_directory}/api.env"
 environment_file="${config_directory}/.env"
 current_stage=preflight
 
@@ -44,7 +43,6 @@ for required_file in \
   "${app_directory}/deploy/nginx/trackfusionweb-api.conf" \
   "${app_directory}/deploy/nginx/trackfusionweb-api-proxy.conf" \
   "${app_directory}/deploy/nginx/trackfusionweb-api-tls.conf" \
-  "${app_directory}/deploy/ec2/migrate-environment-file.sh" \
   "${app_directory}/deploy/ec2/check-api-health.sh"; do
   if [[ ! -f ${required_file} ]]; then
     echo "ERROR: application release is incomplete: ${required_file}" >&2
@@ -61,22 +59,13 @@ if [[ $(redis-cli ping) != PONG ]]; then
   exit 1
 fi
 
-current_stage=environment-migration
+current_stage=environment-permissions
 install -d -o root -g root -m 0700 "${config_directory}"
 install -d -o trackfusion -g trackfusion -m 0750 "${app_directory}/uploads/temp"
 
-if [[ -L ${environment_file} || -L ${legacy_environment_file} ]]; then
-  echo "ERROR: production environment files must not be symbolic links." >&2
+if [[ ! -f ${environment_file} || -L ${environment_file} ]]; then
+  echo "ERROR: the reconciled production environment must be a regular file: ${environment_file}" >&2
   exit 1
-fi
-if [[ ! -f ${environment_file} ]]; then
-  if [[ ! -f ${legacy_environment_file} ]]; then
-    echo "ERROR: no production environment file exists." >&2
-    echo "Restore ${environment_file} or ${legacy_environment_file} from a protected backup before deploying." >&2
-    exit 1
-  fi
-  bash "${app_directory}/deploy/ec2/migrate-environment-file.sh" \
-    "${legacy_environment_file}" "${environment_file}"
 fi
 chown root:root "${environment_file}"
 chmod 0600 "${environment_file}"

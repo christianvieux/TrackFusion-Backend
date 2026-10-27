@@ -98,6 +98,7 @@ jobs:
         run: |
           npm test -- --runInBand
           bash deploy/ec2/tests/environment-config.test.sh
+          bash deploy/ec2/tests/deployment-safety.test.sh
           python -m compileall -q python
 
       - name: Verify database schema and live API

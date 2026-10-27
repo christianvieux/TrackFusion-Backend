@@ -21,9 +21,16 @@ if [[ ${staging_directory} != "${expected_staging}" ]]; then
 fi
 
 app_directory=/opt/trackfusion/api
+config_directory=/etc/trackfusion
+environment_file="${config_directory}/.env"
+legacy_environment_file="${config_directory}/api.env"
 service_name=trackfusionweb-api
 health_check_script="${staging_directory}/deploy/ec2/check-api-health.sh"
 backup_directory=
+candidate_directory=
+candidate_environment=
+source_environment_snapshot=
+pending_environment=
 service_stopped=false
 deployment_started=false
 
@@ -38,7 +45,8 @@ for required_path in \
   "${staging_directory}/deploy/ec2/backup-release.sh" \
   "${staging_directory}/deploy/ec2/check-api-health.sh" \
   "${staging_directory}/deploy/ec2/configure-app.sh" \
-  "${staging_directory}/deploy/ec2/migrate-environment-file.sh" \
+  "${staging_directory}/deploy/ec2/production-managed.env" \
+  "${staging_directory}/deploy/ec2/reconcile-environment-file.sh" \
   "${staging_directory}/deploy/ec2/prune-release-backups.sh" \
   "${staging_directory}/deploy/ec2/rollback-release.sh" \
   "${staging_directory}/deploy/systemd/trackfusionweb-api.service"; do
@@ -51,6 +59,14 @@ done
 handle_exit() {
   local status=$?
   trap - EXIT
+
+  if [[ -n ${pending_environment} ]]; then
+    rm -f -- "${pending_environment}"
+  fi
+  if [[ -n ${candidate_directory} ]]; then
+    rm -f -- "${candidate_environment}" "${source_environment_snapshot}"
+    rmdir -- "${candidate_directory}" 2>/dev/null || true
+  fi
 
   if (( status == 0 )); then
     exit 0
@@ -70,6 +86,8 @@ handle_exit() {
     else
       echo "ERROR: the unchanged application release did not restart cleanly." >&2
     fi
+  else
+    echo "The running application was not changed." >&2
   fi
 
   exit "${status}"
@@ -87,6 +105,38 @@ if ! wait_for_health; then
   exit 1
 fi
 
+if [[ -L ${environment_file} || -L ${legacy_environment_file} ]]; then
+  echo "ERROR: production environment files must not be symbolic links." >&2
+  exit 1
+fi
+if [[ -f ${environment_file} ]]; then
+  source_environment=${environment_file}
+elif [[ -f ${legacy_environment_file} ]]; then
+  source_environment=${legacy_environment_file}
+else
+  echo "ERROR: no production environment file exists." >&2
+  echo "Restore ${environment_file} or ${legacy_environment_file} from a protected backup before deploying." >&2
+  exit 1
+fi
+
+candidate_directory=$(mktemp -d /tmp/trackfusion-config.XXXXXX)
+chmod 0700 "${candidate_directory}"
+candidate_environment="${candidate_directory}/.env"
+source_environment_snapshot="${candidate_directory}/source.env"
+install -m 0600 "${source_environment}" "${source_environment_snapshot}"
+bash "${staging_directory}/deploy/ec2/reconcile-environment-file.sh" \
+  "${source_environment_snapshot}" \
+  "${staging_directory}/deploy/ec2/production-managed.env" \
+  "${candidate_environment}"
+
+# Validate the new release against the reconciled candidate while the current
+# service remains online. This mode validates only the protected host file and
+# never reads or changes external secret stores.
+/usr/bin/env -i /usr/local/bin/node \
+  --env-file="${candidate_environment}" \
+  "${staging_directory}/scripts/validateEnvironment.js" \
+  --local-only
+
 echo "Stopping the API briefly to create a consistent application backup." >&2
 systemctl stop "${service_name}"
 service_stopped=true
@@ -94,7 +144,25 @@ service_stopped=true
 backup_directory=$(bash "${staging_directory}/deploy/ec2/backup-release.sh" "${release_id}")
 echo "Pre-deployment backup completed: ${backup_directory}" >&2
 
+if [[ ! -f ${source_environment} || -L ${source_environment} ]]; then
+  echo "ERROR: the production environment was replaced during deployment preflight." >&2
+  exit 1
+fi
+if [[ ${source_environment} == "${legacy_environment_file}" && -e ${environment_file} ]]; then
+  echo "ERROR: ${environment_file} was created during deployment preflight; refusing to overwrite it." >&2
+  exit 1
+fi
+if ! cmp -- "${source_environment}" "${source_environment_snapshot}"; then
+  echo "ERROR: the production environment changed during deployment preflight; retry without overwriting the operator change." >&2
+  exit 1
+fi
+
 deployment_started=true
+pending_environment=$(mktemp "${config_directory}/.env.XXXXXX")
+install -o root -g root -m 0600 "${candidate_environment}" "${pending_environment}"
+mv -- "${pending_environment}" "${environment_file}"
+pending_environment=
+
 echo "Installing release ${release_id}." >&2
 rsync -a --delete \
   --exclude='venv/' \
@@ -114,17 +182,15 @@ echo "Release ${release_id} passed all health checks." >&2
 
 # The pre-deployment backup contains the legacy file and systemd unit. Remove
 # api.env only after the new unit has loaded .env and passed both health checks.
-canonical_environment=/etc/trackfusion/.env
-legacy_environment=/etc/trackfusion/api.env
 installed_service=/etc/systemd/system/trackfusionweb-api.service
-if [[ -f ${legacy_environment} ]]; then
-  if [[ ! -f ${canonical_environment} ]] || \
+if [[ -f ${legacy_environment_file} ]]; then
+  if [[ ! -f ${environment_file} ]] || \
      ! grep -Fqx 'EnvironmentFile=/etc/trackfusion/.env' "${installed_service}" || \
      [[ ! -f ${backup_directory}/config/api.env ]]; then
     echo "ERROR: refusing to finalize the environment migration without a verified canonical file and legacy backup." >&2
     exit 1
   fi
-  rm -f -- "${legacy_environment}"
+  rm -f -- "${legacy_environment_file}"
   echo "Production environment migration finalized; the protected release backup retains api.env for recovery." >&2
 fi
 

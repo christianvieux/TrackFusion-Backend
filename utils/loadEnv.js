@@ -1,13 +1,14 @@
 // utils/loadEnv.js
 
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-
 export async function initializeEnvironment() {
   if (!process.env.AWS_SECRETS_ARN) {
     console.log("Using environment variables for application configuration");
     return;
   }
 
+  const { SecretsManagerClient, GetSecretValueCommand } = await import(
+    "@aws-sdk/client-secrets-manager"
+  );
   const client = new SecretsManagerClient({ region: process.env.AWS_REGION });
   const command = new GetSecretValueCommand({
     SecretId: process.env.AWS_SECRETS_ARN,
@@ -65,8 +66,6 @@ const BOOLEAN_ENVIRONMENT_VARIABLES = [
   "EXPOSE_OTP_IN_DEVELOPMENT",
   "EXPOSE_RESET_TOKEN_IN_DEVELOPMENT",
 ];
-
-const PRODUCTION_FRONTEND_ORIGIN = "https://www.trackfusionweb.com";
 
 function validateUrl(name, allowedProtocols) {
   let value;
@@ -188,22 +187,29 @@ export function validateEnvironment() {
     if (frontendUrl.protocol !== "https:") {
       throw new Error("FRONTEND_URL must use https: in production");
     }
-    if (process.env.FRONTEND_URL !== PRODUCTION_FRONTEND_ORIGIN) {
+    if (
+      frontendUrl.username ||
+      frontendUrl.password ||
+      frontendUrl.pathname !== "/" ||
+      frontendUrl.search ||
+      frontendUrl.hash
+    ) {
       throw new Error(
-        `FRONTEND_URL must be ${PRODUCTION_FRONTEND_ORIGIN} in production`,
+        "FRONTEND_URL must be an exact HTTPS origin without credentials or a path in production",
       );
     }
     if (corsOrigins.some((origin) => origin.protocol !== "https:")) {
       throw new Error("CORS_ALLOWED_ORIGINS must use https: in production");
     }
     if (
-      !corsOrigins.some(
-        (origin) => origin.origin === PRODUCTION_FRONTEND_ORIGIN,
-      )
+      !corsOrigins.some((origin) => origin.origin === frontendUrl.origin)
     ) {
       throw new Error(
-        `CORS_ALLOWED_ORIGINS must include ${PRODUCTION_FRONTEND_ORIGIN} in production`,
+        "CORS_ALLOWED_ORIGINS must include FRONTEND_URL in production",
       );
+    }
+    if (process.env.COOKIE_DOMAIN?.trim()) {
+      throw new Error("COOKIE_DOMAIN must be unset in production");
     }
 
     for (const name of ["SESSION_SECRET", "JWT_SECRET", "JWT_SECRET_PASSWORD_RESET"]) {

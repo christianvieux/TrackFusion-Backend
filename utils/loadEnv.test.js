@@ -47,6 +47,7 @@ function configureValidProductionEnvironment() {
 
 beforeEach(() => {
   process.env = { ...originalEnvironment, ...validEnvironment };
+  delete process.env.COOKIE_DOMAIN;
 });
 
 afterAll(() => {
@@ -98,12 +99,12 @@ test("rejects insecure cookies in production", () => {
   );
 });
 
-test("requires the canonical frontend URL in production", () => {
+test("requires an exact frontend origin in production", () => {
   configureValidProductionEnvironment();
-  process.env.FRONTEND_URL = "https://trackfusionweb.com";
+  process.env.FRONTEND_URL = "https://www.trackfusionweb.com/app";
 
   expect(() => validateEnvironment()).toThrow(
-    "FRONTEND_URL must be https://www.trackfusionweb.com in production",
+    "FRONTEND_URL must be an exact HTTPS origin without credentials or a path in production",
   );
 });
 
@@ -112,7 +113,16 @@ test("requires the canonical frontend in production CORS origins", () => {
   process.env.CORS_ALLOWED_ORIGINS = "https://untrusted.example";
 
   expect(() => validateEnvironment()).toThrow(
-    "CORS_ALLOWED_ORIGINS must include https://www.trackfusionweb.com in production",
+    "CORS_ALLOWED_ORIGINS must include FRONTEND_URL in production",
+  );
+});
+
+test("requires host-only cookies in production", () => {
+  configureValidProductionEnvironment();
+  process.env.COOKIE_DOMAIN = ".trackfusionweb.com";
+
+  expect(() => validateEnvironment()).toThrow(
+    "COOKIE_DOMAIN must be unset in production",
   );
 });
 

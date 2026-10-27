@@ -1,7 +1,9 @@
 import { initializeEnvironment, validateEnvironment } from "../utils/loadEnv.js";
 
 try {
-  await initializeEnvironment();
+  if (!process.argv.includes("--local-only")) {
+    await initializeEnvironment();
+  }
   validateEnvironment();
   console.log("Production environment validation passed");
 } catch (error) {
