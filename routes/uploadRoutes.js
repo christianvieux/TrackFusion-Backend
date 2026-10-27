@@ -8,6 +8,7 @@ import {
 } from "../queue/uploadQueue.js";
 import { authenticateToken } from "../middlewares/authMiddleware.js";
 import { belongsToUserUpload } from "../services/s3Service.js";
+import { buildUploadJobOptions } from "../queue/uploadJobPolicy.js";
 
 const router = express.Router();
 
@@ -87,7 +88,7 @@ router.post("/track", authenticateToken, async (req, res) => {
         genre,
         mood,
         bpm,
-      })
+      }, buildUploadJobOptions("track", userId, trackUrl.key))
     ).id;
     // send jobId to client, job started
     res.status(202).json({ jobId });
@@ -139,7 +140,7 @@ router.post("/profile-picture", authenticateToken, async (req, res) => {
       await profilePictureUploadQueue.add("profile-picture", {
         userId,
         imageUrl,
-      })
+      }, buildUploadJobOptions("profile", userId, imageUrl.key))
     ).id;
     // send jobId to client, job started
     res.status(202).json({ jobId });

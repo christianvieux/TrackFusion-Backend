@@ -19,19 +19,19 @@ import { Readable } from "stream";
 const FileConfig = {
   TRACK: {
     generateKey: (userId, fileId, fileName) =>
-      `tracks/${userId}/${Date.now()}-${fileId}-${fileName}`,
+      `tracks/${userId}/${fileId}-${fileName}`,
   },
   TRACK_COVER: {
     generateKey: (userId, fileId, fileName) =>
-      `covers/${userId}/${Date.now()}-${fileId}-${fileName}`,
+      `covers/${userId}/${fileId}-${fileName}`,
   },
   PROFILE_PICTURE: {
     generateKey: (userId, fileId, fileName) =>
-      `profiles/${userId}/${Date.now()}-${fileName}`,
+      `profiles/${userId}/${fileName}`,
   },
   ALBUM_COVER: {
     generateKey: (userId, fileId, fileName) =>
-      `albums/${userId}/${Date.now()}-${fileId}-${fileName}`,
+      `albums/${userId}/${fileId}-${fileName}`,
   },
 };
 
@@ -319,7 +319,7 @@ export class S3Service {
     });
   }
 
-  async moveFile(sourceKey, destinationKey) {
+  async copyFile(sourceKey, destinationKey) {
     try {
       await this.client.send(
         new CopyObjectCommand({
@@ -328,10 +328,9 @@ export class S3Service {
           Key: destinationKey,
         }),
       );
-      await this.deleteFile(sourceKey);
       return this.getPublicUrl(destinationKey);
     } catch (error) {
-      throw new Error(`Failed to move file: ${error.message}`);
+      throw new Error(`Failed to copy file: ${error.message}`);
     }
   }
 
@@ -344,7 +343,9 @@ export class S3Service {
 
     const fileName = uploadKey.split("/").pop();
     const destinationKey = config.generateKey(userId, fileId, fileName);
-    const finalReference = await this.moveFile(uploadKey, destinationKey);
+    // Keep the staging object until the surrounding job commits its database
+    // changes. This makes Bull retries durable instead of losing their source.
+    const finalReference = await this.copyFile(uploadKey, destinationKey);
     return { key: destinationKey, url: finalReference, metadata: fileInfo };
   }
 

@@ -139,7 +139,6 @@ export async function deleteTrackFromDatabase(trackId) {
   const values = [trackId];
 
   const result = await queryToDatabase(query, values);
-  console.log('Deleted track:', trackId, result.rows[0]);
   return result.rows[0];
 }
 
