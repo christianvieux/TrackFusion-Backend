@@ -151,7 +151,11 @@ export function checkSession(req, res) {
 export async function forgotPassword(req, res) {
   const responseMessage = "If an account exists for that email, a reset link has been sent";
   const { error: validationError, value } = Joi.object({
-    email: Joi.string().trim().lowercase().email().required(),
+    email: Joi.string().trim().lowercase().email().required().messages({
+      "string.empty": "Email is required",
+      "string.email": "Enter a valid email address",
+      "any.required": "Email is required",
+    }),
   }).validate(req.body);
   if (validationError) {
     return res.status(400).json({ error: validationError.details[0].message });
@@ -257,7 +261,11 @@ export async function resetPassword(req, res) {
   const { password } = req.body;
   
   const { error } = Joi.object({
-    password: Joi.string().min(8).required(),
+    password: Joi.string().min(8).required().messages({
+      "string.empty": "Password is required",
+      "string.min": "Password must be at least 8 characters",
+      "any.required": "Password is required",
+    }),
   }).validate({ password });
   if (!token || error) {
     return res.status(400).json({

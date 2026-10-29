@@ -70,7 +70,11 @@ const schema = Joi.object({
 });
 
 const emailSchema = Joi.object({
-  email: Joi.string().trim().lowercase().email().required(),
+  email: Joi.string().trim().lowercase().email().required().messages({
+    "string.empty": "Email is required",
+    "string.email": "Enter a valid email address",
+    "any.required": "Email is required",
+  }),
 });
 
 const router = express.Router();

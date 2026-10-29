@@ -1,5 +1,17 @@
 name: trackfusionweb
 
+x-local-storage-environment: &local-storage-environment
+  STORAGE_PROVIDER: s3-compatible
+  STORAGE_REGION: ${LOCAL_STORAGE_REGION:-us-east-1}
+  STORAGE_BUCKET: ${LOCAL_STORAGE_BUCKET:-trackfusionweb-local}
+  STORAGE_ENDPOINT: http://storage:8333
+  STORAGE_PUBLIC_ENDPOINT: http://127.0.0.1:${LOCAL_STORAGE_PORT:-9000}
+  STORAGE_ACCESS_KEY_ID: ${LOCAL_STORAGE_ACCESS_KEY_ID:-trackfusion-local}
+  STORAGE_SECRET_ACCESS_KEY: ${LOCAL_STORAGE_SECRET_ACCESS_KEY:-trackfusion-local-secret}
+  STORAGE_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+  AWS_REGION: ${LOCAL_STORAGE_REGION:-us-east-1}
+  AWS_S3_BUCKET: ${LOCAL_STORAGE_BUCKET:-trackfusionweb-local}
+
 services:
   postgres:
     image: postgres:16.15-alpine3.24
@@ -32,13 +44,13 @@ services:
     image: chrislusf/seaweedfs:4.51
     command: ["mini", "-dir=/data", "-ip=storage", "-ip.bind=0.0.0.0"]
     environment:
-      AWS_ACCESS_KEY_ID: trackfusion-local
-      AWS_SECRET_ACCESS_KEY: trackfusion-local-secret
-      S3_BUCKET: trackfusionweb-local
+      AWS_ACCESS_KEY_ID: ${LOCAL_STORAGE_ACCESS_KEY_ID:-trackfusion-local}
+      AWS_SECRET_ACCESS_KEY: ${LOCAL_STORAGE_SECRET_ACCESS_KEY:-trackfusion-local-secret}
+      S3_BUCKET: ${LOCAL_STORAGE_BUCKET:-trackfusionweb-local}
     volumes:
       - storage_data:/data
     ports:
-      - "127.0.0.1:9000:8333"
+      - "127.0.0.1:${LOCAL_STORAGE_PORT:-9000}:8333"
     restart: unless-stopped
 
   storage-init:
@@ -46,16 +58,7 @@ services:
       context: .
       target: runtime
     environment:
-      STORAGE_PROVIDER: s3-compatible
-      STORAGE_REGION: us-east-1
-      STORAGE_BUCKET: trackfusionweb-local
-      STORAGE_ENDPOINT: http://storage:8333
-      STORAGE_PUBLIC_ENDPOINT: http://127.0.0.1:9000
-      STORAGE_ACCESS_KEY_ID: trackfusion-local
-      STORAGE_SECRET_ACCESS_KEY: trackfusion-local-secret
-      STORAGE_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3001}
-      AWS_REGION: us-east-1
-      AWS_S3_BUCKET: trackfusionweb-local
+      <<: *local-storage-environment
     depends_on:
       - storage
     command: ["node", "scripts/initStorage.js"]
@@ -65,12 +68,12 @@ services:
     image: axllent/mailpit:v1.32.0
     environment:
       MP_DATABASE: /data/mailpit.db
-      MP_MAX_MESSAGES: 1000
+      MP_MAX_MESSAGES: ${LOCAL_MAILPIT_MAX_MESSAGES:-1000}
     volumes:
       - mailpit_data:/data
     ports:
-      - "127.0.0.1:1025:1025"
-      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:${LOCAL_MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${LOCAL_MAILPIT_UI_PORT:-8025}:8025"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 5s
@@ -85,24 +88,16 @@ services:
     env_file:
       - .env
     environment:
+      <<: *local-storage-environment
       HOST: 0.0.0.0
       PORT: 8081
       DATABASE_URL: postgresql://trackfusion:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@postgres:5432/trackfusionweb_db
       REDIS_URL: redis://redis:6379
       PYTHON_EXECUTABLE: /opt/venv/bin/python
       AWS_PROFILE: ""
-      AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
-      STORAGE_PROVIDER: s3-compatible
-      STORAGE_REGION: us-east-1
-      STORAGE_BUCKET: trackfusionweb-local
-      STORAGE_ENDPOINT: http://storage:8333
-      STORAGE_PUBLIC_ENDPOINT: http://127.0.0.1:9000
-      STORAGE_ACCESS_KEY_ID: trackfusion-local
-      STORAGE_SECRET_ACCESS_KEY: trackfusion-local-secret
-      STORAGE_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3001}
       EMAIL_PROVIDER: smtp
       EMAIL_DELIVERY_ENABLED: "true"
       EXPOSE_OTP_IN_DEVELOPMENT: "false"
@@ -121,7 +116,7 @@ services:
         condition: service_healthy
     command: ["sh", "-c", "node scripts/initDatabase.js && exec node index.js"]
     ports:
-      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:${LOCAL_API_PORT:-8081}:8081"
     restart: unless-stopped
 
 volumes:

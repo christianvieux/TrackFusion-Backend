@@ -9,12 +9,21 @@ import {
 import Joi from "joi";
 
 const otpIdentitySchema = Joi.object({
-  email: Joi.string().trim().lowercase().email().required(),
+  email: Joi.string().trim().lowercase().email().required().messages({
+    "string.empty": "Email is required",
+    "string.email": "Enter a valid email address",
+    "any.required": "Email is required",
+  }),
   purpose: Joi.string().valid("registration").required(),
 });
 
 const otpVerificationSchema = otpIdentitySchema.keys({
-  otp_code: Joi.string().pattern(/^\d{6}$/).required(),
+  otp_code: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+    "string.empty": "Verification code is required",
+    "string.length": "Verification code must be exactly 6 digits",
+    "string.pattern.base": "Verification code must contain only numbers",
+    "any.required": "Verification code is required",
+  }),
 });
 
 export async function generateOtp(req, res) {

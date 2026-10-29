@@ -1,7 +1,14 @@
 import sharp from "sharp";
+import dotenv from "dotenv";
 
-const apiBaseUrl = process.env.API_BASE_URL || "http://127.0.0.1:8081";
-const mailpitBaseUrl = process.env.MAILPIT_BASE_URL || "http://127.0.0.1:8025";
+dotenv.config();
+
+const apiBaseUrl =
+  process.env.API_BASE_URL ||
+  `http://127.0.0.1:${process.env.LOCAL_API_PORT || 8081}`;
+const mailpitBaseUrl =
+  process.env.MAILPIT_BASE_URL ||
+  `http://127.0.0.1:${process.env.LOCAL_MAILPIT_UI_PORT || 8025}`;
 const uniqueSuffix = Date.now().toString(36);
 const email = `registration-${uniqueSuffix}@example.com`;
 const username = `e2e_${uniqueSuffix}`.slice(0, 20);
