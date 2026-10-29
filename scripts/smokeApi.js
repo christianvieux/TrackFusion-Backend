@@ -2,7 +2,9 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const baseUrl = process.env.API_BASE_URL || `http://127.0.0.1:${process.env.PORT || 8081}`;
+const baseUrl =
+  process.env.API_BASE_URL ||
+  `http://127.0.0.1:${process.env.LOCAL_API_PORT || process.env.PORT || 8081}`;
 
 const checks = [
   { path: "/health", validate: (body) => body.status === "healthy" },

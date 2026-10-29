@@ -61,6 +61,8 @@ FRONTEND_URL=http://www.trackfusionweb.com
 CORS_ALLOWED_ORIGINS=http://www.trackfusionweb.com
 COOKIE_SECURE=true
 COOKIE_SAME_SITE=lax
+STORAGE_PROVIDER=aws-s3
+EMAIL_PROVIDER=resend
 EOF
 
   cat > "${config_directory}/.env" <<'EOF'
@@ -72,7 +74,6 @@ FRONTEND_URL=https://trackfusionweb.com
 CORS_ALLOWED_ORIGINS=https://trackfusionweb.com
 SESSION_SECRET=preserve-session-secret-00000000000000000000
 JWT_SECRET=preserve-jwt-secret-00000000000000000000000
-JWT_SECRET_PASSWORD_RESET=preserve-reset-secret-0000000000000000000
 DATABASE_URL=postgresql://trackfusion:preserve-password@127.0.0.1:5432/trackfusionweb_db
 REDIS_URL=redis://127.0.0.1:6379
 PYTHON_EXECUTABLE=/opt/trackfusion/api/venv/bin/python

@@ -40,12 +40,10 @@ const REQUIRED_ENVIRONMENT_VARIABLES = [
   "CORS_ALLOWED_ORIGINS",
   "SESSION_SECRET",
   "JWT_SECRET",
-  "JWT_SECRET_PASSWORD_RESET",
   "DATABASE_URL",
   "REDIS_URL",
   "PYTHON_EXECUTABLE",
-  "AWS_REGION",
-  "AWS_S3_BUCKET",
+  "STORAGE_PROVIDER",
   "AUDIO_MAX_LENGTH",
   "AUDIO_MAX_FILE_SIZE",
   "IMAGE_MAX_FILE_SIZE",
@@ -53,6 +51,7 @@ const REQUIRED_ENVIRONMENT_VARIABLES = [
   "ALLOWED_IMAGE_TYPES",
   "COOKIE_SECURE",
   "COOKIE_SAME_SITE",
+  "EMAIL_PROVIDER",
   "EMAIL_DELIVERY_ENABLED",
   "EMAIL_VALIDATE_MX",
   "EXPOSE_OTP_IN_DEVELOPMENT",
@@ -156,15 +155,66 @@ export function validateEnvironment() {
   validateUrl("DATABASE_URL", ["postgres:", "postgresql:"]);
   validateUrl("REDIS_URL", ["redis:", "rediss:"]);
 
+  if (!["aws-s3", "s3-compatible"].includes(process.env.STORAGE_PROVIDER)) {
+    throw new Error("STORAGE_PROVIDER must be aws-s3 or s3-compatible");
+  }
+
+  const storageRegion = process.env.STORAGE_REGION || process.env.AWS_REGION;
+  const storageBucket = process.env.STORAGE_BUCKET || process.env.AWS_S3_BUCKET;
+  if (!storageRegion?.trim() || !storageBucket?.trim()) {
+    throw new Error(
+      "Storage requires STORAGE_REGION and STORAGE_BUCKET (or the AWS_REGION and AWS_S3_BUCKET compatibility names)",
+    );
+  }
+
+  if (process.env.STORAGE_PROVIDER === "s3-compatible") {
+    for (const name of [
+      "STORAGE_ENDPOINT",
+      "STORAGE_PUBLIC_ENDPOINT",
+      "STORAGE_ACCESS_KEY_ID",
+      "STORAGE_SECRET_ACCESS_KEY",
+    ]) {
+      if (!process.env[name]?.trim()) {
+        throw new Error(`${name} is required for s3-compatible storage`);
+      }
+    }
+    validateUrl("STORAGE_ENDPOINT", ["http:", "https:"]);
+    validateUrl("STORAGE_PUBLIC_ENDPOINT", ["http:", "https:"]);
+  }
+
   const corsOrigins = process.env.CORS_ALLOWED_ORIGINS.split(",").map((origin) =>
     validateOrigin("CORS_ALLOWED_ORIGINS", origin.trim()),
   );
 
   const emailDeliveryEnabled = process.env.EMAIL_DELIVERY_ENABLED === "true";
+  if (!["resend", "smtp", "disabled"].includes(process.env.EMAIL_PROVIDER)) {
+    throw new Error("EMAIL_PROVIDER must be resend, smtp, or disabled");
+  }
   if (emailDeliveryEnabled) {
-    for (const name of ["MAILGUN_API_KEY", "MAILGUN_DOMAIN", "MAILGUN_FROM_EMAIL"]) {
-      if (!process.env[name]?.trim()) {
-        throw new Error(`${name} is required when email delivery is enabled`);
+    if (process.env.EMAIL_PROVIDER === "disabled") {
+      throw new Error("EMAIL_PROVIDER cannot be disabled when email delivery is enabled");
+    }
+    if (
+      process.env.EMAIL_PROVIDER === "resend" &&
+      !process.env.RESEND_API_KEY?.trim()
+    ) {
+      throw new Error(
+        "RESEND_API_KEY is required when email delivery is enabled",
+      );
+    }
+    if (process.env.EMAIL_PROVIDER === "smtp") {
+      if (!process.env.SMTP_HOST?.trim()) {
+        throw new Error("SMTP_HOST is required for SMTP email delivery");
+      }
+      if (!/^\d+$/.test(process.env.SMTP_PORT || "")) {
+        throw new Error("SMTP_PORT must be an integer between 1 and 65535");
+      }
+      const smtpPort = Number(process.env.SMTP_PORT);
+      if (smtpPort < 1 || smtpPort > 65535) {
+        throw new Error("SMTP_PORT must be an integer between 1 and 65535");
+      }
+      if (!['true', 'false'].includes(process.env.SMTP_SECURE || "")) {
+        throw new Error("SMTP_SECURE must be true or false");
       }
     }
   }
@@ -181,6 +231,12 @@ export function validateEnvironment() {
   }
 
   if (process.env.NODE_ENV === "production") {
+    if (process.env.STORAGE_PROVIDER !== "aws-s3") {
+      throw new Error("STORAGE_PROVIDER must be aws-s3 in production");
+    }
+    if (process.env.EMAIL_PROVIDER !== "resend") {
+      throw new Error("EMAIL_PROVIDER must be resend in production");
+    }
     if (process.env.COOKIE_SECURE !== "true") {
       throw new Error("COOKIE_SECURE must be true in production");
     }
@@ -212,7 +268,7 @@ export function validateEnvironment() {
       throw new Error("COOKIE_DOMAIN must be unset in production");
     }
 
-    for (const name of ["SESSION_SECRET", "JWT_SECRET", "JWT_SECRET_PASSWORD_RESET"]) {
+    for (const name of ["SESSION_SECRET", "JWT_SECRET"]) {
       if (process.env[name].length < 32) {
         throw new Error(`${name} must be at least 32 characters in production`);
       }

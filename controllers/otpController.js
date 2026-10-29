@@ -1,20 +1,29 @@
 // controllers/otpController.js
 import {
-  generateOtpCode,
-  isOtpCodeValid,
   isOtpCooldownActive,
 } from "../utils/otpUtils.js";
+import {
+  startRegistration,
+  verifyRegistration,
+} from "../services/registrationService.js";
 import Joi from "joi";
 
 const otpIdentitySchema = Joi.object({
-  email: Joi.string().email().required(),
-  purpose: Joi.string()
-    .valid("registration", "reset_password", "verification")
-    .required(),
+  email: Joi.string().trim().lowercase().email().required().messages({
+    "string.empty": "Email is required",
+    "string.email": "Enter a valid email address",
+    "any.required": "Email is required",
+  }),
+  purpose: Joi.string().valid("registration").required(),
 });
 
 const otpVerificationSchema = otpIdentitySchema.keys({
-  otp_code: Joi.string().pattern(/^\d{6}$/).required(),
+  otp_code: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+    "string.empty": "Verification code is required",
+    "string.length": "Verification code must be exactly 6 digits",
+    "string.pattern.base": "Verification code must contain only numbers",
+    "any.required": "Verification code is required",
+  }),
 });
 
 export async function generateOtp(req, res) {
@@ -33,22 +42,22 @@ export async function generateOtp(req, res) {
   }
 
   try {
-    const { email, purpose } = value;
-    const otpCode = await generateOtpCode(email, purpose);
-    const response = { message: "Verification code generated" };
-
-    if (
-      process.env.NODE_ENV === "development" &&
-      process.env.EXPOSE_OTP_IN_DEVELOPMENT === "true"
-    ) {
-      response.otpCode = otpCode;
-    }
-
-    res.status(200).json(response);
+    const { email } = value;
+    const registration = await startRegistration(email);
+    res.status(200).json({ message: registration.message });
   } catch (error) {
-    console.error("Error generating OTP code:", error);
-    const status = error.code === "OTP_RATE_LIMITED" ? 429 : 500;
-    res.status(status).json({ error: error.message || "Internal server error" });
+    console.error("Unable to generate verification code", {
+      code: error.code || "OTP_GENERATION_FAILED",
+    });
+    if (error.code === "OTP_RATE_LIMITED") {
+      return res.status(429).json({ error: error.message });
+    }
+    if (error.code === "EMAIL_DELIVERY_FAILED") {
+      return res.status(503).json({
+        error: "Email verification is temporarily unavailable",
+      });
+    }
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -59,15 +68,21 @@ export async function verifyOtp(req, res) {
   }
 
   try {
-    const { email, otp_code, purpose } = value;
-    const { isValid, reason } = await isOtpCodeValid(email, otp_code, purpose);
-    if (!isValid) {
-      return res.status(400).json({ error: `${reason}` });
-    }
-    res.status(200).json({ message: "OTP code is valid" });
+    const { email, otp_code } = value;
+    const verification = await verifyRegistration(email, otp_code);
+    req.session.registration = verification;
+    res.status(200).json({
+      message: "Email verified",
+      registrationGrant: verification.registrationGrant,
+    });
   } catch (error) {
-    console.error("Error verifying OTP code:", error);
-    res.status(500).json({ error: error.message || "Internal server error" });
+    console.error("Unable to verify code", {
+      code: error.code || "OTP_VERIFICATION_FAILED",
+    });
+    if (error.code === "INVALID_OTP") {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: "Internal server error" });
   }
 }
 
@@ -82,7 +97,9 @@ export async function checkOtpCooldown(req, res) {
     const cooldownActive = await isOtpCooldownActive(email, purpose);
     res.status(200).json({ cooldownActive });
   } catch (error) {
-    console.error("Error checking OTP cooldown:", error);
-    res.status(500).json({ error: error.message || "Internal server error" });
+    console.error("Unable to check verification-code cooldown", {
+      code: error.code || "OTP_COOLDOWN_CHECK_FAILED",
+    });
+    res.status(500).json({ error: "Internal server error" });
   }
 }

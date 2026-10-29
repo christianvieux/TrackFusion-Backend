@@ -21,6 +21,8 @@ export const authLimiter = createLimiter({
 });
 
 export const otpLimiter = createLimiter({
-  limit: 10,
+  // This coarse IP limit spans generation, verification, and registration.
+  // Persisted per-email cooldown and attempt limits provide the tighter guard.
+  limit: 30,
   message: "Too many verification-code requests. Please try again later.",
 });

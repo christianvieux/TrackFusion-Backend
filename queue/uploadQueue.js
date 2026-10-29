@@ -3,10 +3,10 @@ import Queue from 'bull';
 import { audioService } from "../services/audioService.js";
 import { imageService } from "../services/imageService.js";
 import { s3Service } from "../services/s3Service.js";
-import { uploadTrackToDatabase, updateTrackOnDatabase } from "../controllers/trackController.js";
+import { deleteTrackFromDatabase, uploadTrackToDatabase, updateTrackOnDatabase } from "../controllers/trackController.js";
 import { updateUserOnDatabase, getUserById } from '../controllers/userController.js';
 import { cleanupFiles } from '../utils/cleanup.js';
-import fs from 'fs';
+import { isFinalJobAttempt } from './uploadJobPolicy.js';
 
 
 const trackUploadQueue = new Queue('file-processing', process.env.REDIS_URL);
@@ -15,6 +15,10 @@ const profilePictureUploadQueue = new Queue('profile-picture-processing', proces
 
 trackUploadQueue.process("track", async (job) => {
   const tempFiles = [];
+  let uploadedTrack;
+  let finalizedTrack;
+  let finalizedCover;
+  let completed = false;
   const {
     userId,
     trackUrl,
@@ -32,7 +36,6 @@ trackUploadQueue.process("track", async (job) => {
   try {
     // Download track file from S3
     job.progress("Downloading track file...");
-    console.log(`Downloading file from S3: ${trackUrl.uploadUrl}`);
     const trackDownloadResult = await s3Service.downloadToTemp(trackUrl.key);
     tempFiles.push(trackDownloadResult.filePath);
 
@@ -85,33 +88,34 @@ trackUploadQueue.process("track", async (job) => {
       bpm: bpm || null,
       creator_id: userId,
       sound_type: normalizedMetadata.format || "unknown",
-      url: trackUrl.publicUrl,
-      image_url: imageUrl?.publicUrl,
+      url: trackUrl.key,
+      image_url: imageUrl?.key,
     };
 
     job.progress("Saving to database...");
     // Create database record
-    const uploadedTrack = await uploadTrackToDatabase(enrichedTrackData);
+    uploadedTrack = await uploadTrackToDatabase(enrichedTrackData);
 
     
     // Move the track file to its final location
     job.progress("Finalizing upload...");
     try {
-      const finalizedTrack = await s3Service.finalizeTrackUpload(
-        trackUrl.key,
-        userId,
-        uploadedTrack.id
-      );
-      await updateTrackOnDatabase(uploadedTrack.id, { url: finalizedTrack.url });
-    
       if (imageUrl) {
-        const finalizedCover = await s3Service.finalizeCoverArtUpload(
+        finalizedCover = await s3Service.finalizeCoverArtUpload(
           imageUrl.key,
           userId,
           uploadedTrack.id
         );
-        await updateTrackOnDatabase(uploadedTrack.id, { image_url: finalizedCover.url });
       }
+      finalizedTrack = await s3Service.finalizeTrackUpload(
+        trackUrl.key,
+        userId,
+        uploadedTrack.id
+      );
+      await updateTrackOnDatabase(uploadedTrack.id, {
+        url: finalizedTrack.url,
+        image_url: finalizedCover?.url || null,
+      });
     } catch (moveError) {
       console.error('Failed to move files to final location:', moveError);
       throw new Error(`File movement failed: ${moveError.message}`);
@@ -119,21 +123,34 @@ trackUploadQueue.process("track", async (job) => {
 
     job.progress("Upload complete!");
 
-    console.log("Track uploaded successfully:", uploadedTrack);
-    
-    return uploadedTrack;
+    completed = true;
+    return {
+      ...uploadedTrack,
+      url: finalizedTrack.url,
+      image_url: finalizedCover
+        ? await s3Service.generateSecureUrl(finalizedCover.key)
+        : null,
+    };
   } catch (error) {
+    if (uploadedTrack) {
+      await deleteTrackFromDatabase(uploadedTrack.id).catch(() => {});
+    }
+    await Promise.allSettled([
+      finalizedTrack?.key ? s3Service.deleteFile(finalizedTrack.key) : null,
+      finalizedCover?.key ? s3Service.deleteFile(finalizedCover.key) : null,
+    ]);
     console.error(`Job ${job.id} failed:`, error);
     throw error; // Propagate error to trigger job failure
   } finally {
     // Cleanup temp files
     await cleanupFiles(tempFiles);
-    // Cleanup uploaded files in S3
-    if (trackUrl) {
-      await s3Service.deleteFile(trackUrl.key);
-    }
-    if (imageUrl) {
-      await s3Service.deleteFile(imageUrl.key);
+    // Preserve staging objects for intermediate attempts. Delete them only
+    // after success or after Bull has exhausted the configured retries.
+    if (completed || isFinalJobAttempt(job)) {
+      await Promise.allSettled([
+        trackUrl ? s3Service.deleteFile(trackUrl.key) : null,
+        imageUrl ? s3Service.deleteFile(imageUrl.key) : null,
+      ]);
     }
   }
 });
@@ -141,6 +158,8 @@ trackUploadQueue.process("track", async (job) => {
 profilePictureUploadQueue.process("profile-picture", async (job) => {
   const { userId, imageUrl } = job.data;
   const tempFiles = [];
+  let finalizedImage;
+  let completed = false;
 
   try {
     // Download image file from s3
@@ -156,37 +175,40 @@ profilePictureUploadQueue.process("profile-picture", async (job) => {
     }
     // Move the image file to its final location
     job.progress("Finalizing upload...");
-    const finalizedImage = await s3Service.finalizeProfilePictureUpload(
+    finalizedImage = await s3Service.finalizeProfilePictureUpload(
       imageUrl.key,
       userId
     );
 
-    // Delete previous profile picture, if any
+    // Commit the new reference before best-effort cleanup of the old object.
     const userInfo = await getUserById(userId);
     const oldProfilePictureUrl = userInfo.profile_picture_url;
+    await updateUserOnDatabase(userId, { profile_picture_url: finalizedImage.url });
 
     if (oldProfilePictureUrl) {
-      job.progress(`Deleting old profile picture: ${oldProfilePictureUrl}`);
       const oldKey = s3Service.getKeyFromPublicUrl(oldProfilePictureUrl);
-      await s3Service.deleteFile(oldKey);
-      // await s3Service.deleteFile(oldKey);
+      await s3Service.deleteFile(oldKey).catch((error) => {
+        console.error("Unable to delete previous profile picture", {
+          code: error.code || "STORAGE_DELETE_FAILED",
+        });
+      });
     }
 
-    // update database
-    const updatedUser = await updateUserOnDatabase(userId, { profile_picture_url: finalizedImage.url });
-
     job.progress("Upload complete!");
-    console.log("Profile picture uploaded successfully:", updatedUser);
-
-    return finalizedImage.url;
+    completed = true;
+    return s3Service.generateSecureUrl(finalizedImage.key);
   } catch (error) {
+    if (finalizedImage?.key) {
+      await s3Service.deleteFile(finalizedImage.key).catch(() => {});
+    }
     console.error(`Job ${job.id} failed:`, error);
     throw error; // Propagate error to trigger job failure
   } finally {
     // Cleanup temp files
     await cleanupFiles(tempFiles);
-    // Cleanup uploaded file in S3
-    await s3Service.deleteFile(imageUrl.key);
+    if (completed || isFinalJobAttempt(job)) {
+      await s3Service.deleteFile(imageUrl.key).catch(() => {});
+    }
   }
 });
 

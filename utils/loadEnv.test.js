@@ -11,10 +11,10 @@ const validEnvironment = {
   CORS_ALLOWED_ORIGINS: "http://localhost:3001",
   SESSION_SECRET: "test-session-secret",
   JWT_SECRET: "test-jwt-secret",
-  JWT_SECRET_PASSWORD_RESET: "test-password-reset-secret",
   DATABASE_URL: "postgresql://user:password@localhost:5432/trackfusionweb_db",
   REDIS_URL: "redis://127.0.0.1:6379",
   PYTHON_EXECUTABLE: "venv/bin/python",
+  STORAGE_PROVIDER: "aws-s3",
   AWS_REGION: "us-east-1",
   AWS_S3_BUCKET: "trackfusionweb-api-test-bucket",
   AUDIO_MAX_LENGTH: "900",
@@ -24,6 +24,7 @@ const validEnvironment = {
   ALLOWED_IMAGE_TYPES: "image/jpeg,image/png",
   COOKIE_SECURE: "false",
   COOKIE_SAME_SITE: "lax",
+  EMAIL_PROVIDER: "disabled",
   EMAIL_DELIVERY_ENABLED: "false",
   EMAIL_VALIDATE_MX: "false",
   EXPOSE_OTP_IN_DEVELOPMENT: "true",
@@ -35,8 +36,8 @@ function configureValidProductionEnvironment() {
     NODE_ENV: "production",
     SESSION_SECRET: "s".repeat(32),
     JWT_SECRET: "j".repeat(32),
-    JWT_SECRET_PASSWORD_RESET: "r".repeat(32),
     EMAIL_DELIVERY_ENABLED: "false",
+    EMAIL_PROVIDER: "resend",
     EXPOSE_OTP_IN_DEVELOPMENT: "false",
     EXPOSE_RESET_TOKEN_IN_DEVELOPMENT: "false",
     FRONTEND_URL: "https://www.trackfusionweb.com",
@@ -88,6 +89,16 @@ test("allows production startup with email-dependent features disabled", () => {
   configureValidProductionEnvironment();
 
   expect(validateEnvironment()).toEqual({ port: 8081 });
+});
+
+test("requires the Resend API key when email delivery is enabled", () => {
+  process.env.EMAIL_PROVIDER = "resend";
+  process.env.EMAIL_DELIVERY_ENABLED = "true";
+  delete process.env.RESEND_API_KEY;
+
+  expect(() => validateEnvironment()).toThrow(
+    "RESEND_API_KEY is required when email delivery is enabled",
+  );
 });
 
 test("rejects insecure cookies in production", () => {
@@ -152,5 +163,68 @@ test("requires a usable local email flow", () => {
 
   expect(() => validateEnvironment()).toThrow(
     "Development without email delivery requires both development token exposure flags",
+  );
+});
+
+test("accepts explicit local SMTP delivery", () => {
+  Object.assign(process.env, {
+    EMAIL_PROVIDER: "smtp",
+    EMAIL_DELIVERY_ENABLED: "true",
+    SMTP_HOST: "mailpit",
+    SMTP_PORT: "1025",
+    SMTP_SECURE: "false",
+    EXPOSE_OTP_IN_DEVELOPMENT: "false",
+    EXPOSE_RESET_TOKEN_IN_DEVELOPMENT: "false",
+  });
+
+  expect(validateEnvironment()).toEqual({ port: 8081 });
+});
+
+test("prevents production from selecting local SMTP", () => {
+  configureValidProductionEnvironment();
+  Object.assign(process.env, {
+    EMAIL_PROVIDER: "smtp",
+    SMTP_HOST: "mailpit",
+    SMTP_PORT: "1025",
+    SMTP_SECURE: "false",
+  });
+
+  expect(() => validateEnvironment()).toThrow(
+    "EMAIL_PROVIDER must be resend in production",
+  );
+});
+
+test("requires explicit credentials and endpoints for local compatible storage", () => {
+  process.env.STORAGE_PROVIDER = "s3-compatible";
+
+  expect(() => validateEnvironment()).toThrow(
+    "STORAGE_ENDPOINT is required for s3-compatible storage",
+  );
+});
+
+test("accepts explicit local S3-compatible storage configuration", () => {
+  Object.assign(process.env, {
+    STORAGE_PROVIDER: "s3-compatible",
+    STORAGE_ENDPOINT: "http://storage:8333",
+    STORAGE_PUBLIC_ENDPOINT: "http://127.0.0.1:9000",
+    STORAGE_ACCESS_KEY_ID: "local-access-key",
+    STORAGE_SECRET_ACCESS_KEY: "local-secret-key",
+  });
+
+  expect(validateEnvironment()).toEqual({ port: 8081 });
+});
+
+test("prevents production from pointing at a local compatible provider", () => {
+  configureValidProductionEnvironment();
+  process.env.STORAGE_PROVIDER = "s3-compatible";
+  Object.assign(process.env, {
+    STORAGE_ENDPOINT: "http://storage:8333",
+    STORAGE_PUBLIC_ENDPOINT: "http://127.0.0.1:9000",
+    STORAGE_ACCESS_KEY_ID: "local-access-key",
+    STORAGE_SECRET_ACCESS_KEY: "local-secret-key",
+  });
+
+  expect(() => validateEnvironment()).toThrow(
+    "STORAGE_PROVIDER must be aws-s3 in production",
   );
 });

@@ -1,221 +1,290 @@
 # TrackFusionWeb API
 
-TrackFusionWeb is a music-sharing application for publishing, discovering, and organizing audio tracks. This repository contains the backend API that manages accounts, track metadata, privacy rules, favorites, media storage, and audio analysis.
+[![CI](https://github.com/christianvieux/trackfusionweb-api/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/christianvieux/trackfusionweb-api/actions/workflows/ci-cd.yml)
 
-🌐 **Live application:** [www.trackfusionweb.com](https://www.trackfusionweb.com)
+The API for **TrackFusionWeb**, a music-sharing app for uploading, discovering,
+organizing, and analyzing tracks.
 
-The production API is available at [api.trackfusionweb.com](https://api.trackfusionweb.com). Its health endpoint is `GET /health`.
+[Live app](https://www.trackfusionweb.com) ·
+[Production API health](https://api.trackfusionweb.com/health) ·
+[App repository](https://github.com/christianvieux/TrackFusion-Frontend)
 
-## Frontend application
+These are the current production addresses for TrackFusionWeb. Local `.env`
+changes do not change these hosted links.
 
-The user-facing frontend for TrackFusionWeb is maintained in a separate repository: **[trackfusionweb-app](https://github.com/christianvieux/trackfusionweb-app)**.
+## What this API does
 
-The frontend connects to this backend API for authentication, track discovery and management, favorites, uploads, and playback. Visit [www.trackfusionweb.com](https://www.trackfusionweb.com) to access the application.
+- Creates accounts and handles secure sign-in.
+- Stores track details, profiles, favorites, and privacy settings.
+- Uploads and serves private audio and profile images.
+- Analyzes audio for BPM and musical key.
+- Sends verification and password-reset emails.
 
-## Key features
+## Technology at a glance
 
-- Account registration with one-time-code validation, login/logout, session checks, password changes, and password-reset workflows.
-- Public and private track catalogs with creator ownership checks, profile data, favorites, and track editing or deletion.
-- Direct browser uploads to a private Amazon S3 bucket through time-limited presigned URLs.
-- Signed playback URLs that keep media private while allowing controlled access.
-- Redis-backed background jobs for upload processing and BPM/key analysis.
-- Audio and image validation before media records are finalized.
-- Health, schema verification, and smoke-test commands for local and production checks.
-
-## Technology
-
-| Component | Purpose |
+| Technology | Role in the project |
 | --- | --- |
-| Node.js 22+ and Express 4 | HTTP API, validation, authentication, and application logic. The production image pins Node.js 24.16.0. |
-| PostgreSQL 16 | Users, tracks, favorites, verification codes, reset tokens, and related metadata. |
-| Redis and Bull | Server-side sessions and asynchronous media-processing jobs. |
-| Python 3.12, librosa, NumPy, and FFmpeg | BPM/key analysis and supporting audio processing. |
-| Amazon S3 and AWS SDK v3 | Private media storage, presigned uploads, and signed playback. |
-| Nginx and systemd | TLS termination, reverse proxying, and API process supervision on EC2. |
-| Terraform and GitHub Actions | Reproducible AWS infrastructure and tested, keyless deployments. |
-| Jest and Docker Compose | Unit testing and a repeatable local service stack. |
+| Node.js and Express | Runs the API and handles browser requests |
+| PostgreSQL | Saves accounts, tracks, favorites, and other long-term data |
+| Redis and Bull | Keeps sign-in sessions and manages background work |
+| Amazon S3 / SeaweedFS | Stores private audio and images in production / locally |
+| Python, librosa, and FFmpeg | Reads audio files and analyzes BPM and musical key |
+| Docker, Terraform, and GitHub Actions | Supports local setup, AWS infrastructure, testing, and deployment |
 
-Mailgun support is implemented for verification and password-reset email, but delivery is controlled by configuration.
+## Run it locally
 
-## Architecture
+> **Recommended:** use Docker. It starts the API and everything it needs. You
+> do not need to install PostgreSQL, Redis, Python, or FFmpeg yourself.
+
+> **About the URLs in this guide:** every local URL below is a default from
+> [`.env.example`](.env.example). If you change a local port, use your new value
+> instead. The configuration table after step 5 shows exactly what to update.
+
+### 1. Install the two requirements
+
+- [Git](https://git-scm.com/downloads)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker
+  Engine with Compose)
+
+Make sure Docker is open and running before continuing.
+
+### 2. Download the project
+
+```bash
+git clone https://github.com/christianvieux/trackfusionweb-api.git
+cd trackfusionweb-api
+```
+
+If you already downloaded the project, open a terminal in its folder and skip
+this step.
+
+### 3. Create your local settings file
+
+If an `.env` file already exists, keep it and skip this command.
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and replace the example values for these three settings:
+
+```dotenv
+SESSION_SECRET=use_a_long_random_value_here
+JWT_SECRET=use_a_different_long_random_value_here
+POSTGRES_PASSWORD=choose_a_local_database_password
+```
+
+Use at least 32 random characters for each secret. These values are only for
+your computer and must not be committed to Git. When using Docker, leave the
+other settings at their defaults.
+
+### 4. Start the API
+
+```bash
+docker compose up -d --build
+```
+
+This builds the API, starts all local services in the background, and prepares
+the database automatically. The first start can take a few minutes.
+
+### 5. View the API
+
+With the default settings, open
+[http://127.0.0.1:8081/health](http://127.0.0.1:8081/health). A working API
+returns:
+
+```json
+{"status":"healthy"}
+```
+
+The API does not have a visual home page. Opening only the API address may show
+`Cannot GET /`; that is normal. Use `/health`, connect the TrackFusionWeb App,
+or request another endpoint.
+
+## Local URLs and configuration
+
+The addresses in this table assume `.env` still has its example values.
+
+| Default local address | What it is for | Setting that changes it |
+| --- | --- | --- |
+| `http://127.0.0.1:8081/health` | Confirms that the API is running | `LOCAL_API_PORT` |
+| `http://127.0.0.1:8081/tracks/public` | Returns public tracks as JSON | `LOCAL_API_PORT` |
+| `http://127.0.0.1:9000` | Serves signed local audio and image URLs | `LOCAL_STORAGE_PORT` |
+| `http://127.0.0.1:8025` | Shows local verification and password-reset emails | `LOCAL_MAILPIT_UI_PORT` |
+
+Local emails are captured by Mailpit; they are not sent to a real address.
+
+Keep these settings aligned when either project uses a custom port or URL:
+
+| Connection | App setting | API setting |
+| --- | --- | --- |
+| App calls the API | `NEXT_PUBLIC_API_URL` | `LOCAL_API_PORT` |
+| API accepts the App | `NEXT_PUBLIC_SITE_URL` and the App's actual browser address | `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, and `DEV_URLS` |
+| App displays local media | `NEXT_IMAGE_REMOTE_ORIGINS` | `LOCAL_STORAGE_PORT` |
+
+For example, if `LOCAL_API_PORT=8181`, set
+`NEXT_PUBLIC_API_URL=http://localhost:8181` in the App. If you keep the
+defaults, no coordination is needed.
+
+## Common commands
+
+Run these commands from the API folder.
+
+| Command | What it does |
+| --- | --- |
+| `docker compose up -d` | Starts the existing local setup in the background |
+| `docker compose up -d --build` | Rebuilds the API and starts it; use this after code or package changes |
+| `docker compose ps` | Shows which services are running and whether they are healthy |
+| `docker compose logs -f api` | Shows live API messages; press `Ctrl+C` to stop viewing the messages |
+| `docker compose restart api` | Restarts only the API |
+| `docker compose down` | Stops the project and keeps your local data |
+
+> **Data reset — use with care:** `docker compose down -v` stops the project
+> and permanently deletes its local database, uploaded files, and captured
+> emails. Most people should use `docker compose down` instead.
+
+## Troubleshooting
+
+### The health link does not open
+
+Open `/health` on the API address configured by `LOCAL_API_PORT`. Then check the
+services and read the API messages:
+
+```bash
+docker compose ps
+docker compose logs api
+```
+
+If a service shows `unhealthy` or `exited`, rebuild and start the setup again:
+
+```bash
+docker compose up -d --build
+```
+
+### Docker says a required value is missing
+
+Make sure `.env` exists in the API folder and that `POSTGRES_PASSWORD` has a
+value. If the file is missing, repeat step 3 above. Do not overwrite an existing
+`.env` file unless you intend to replace your local settings.
+
+### A port is already in use
+
+The defaults are API `8081`, storage `9000`, Mailpit inbox `8025`, and Mailpit
+SMTP `1025`. Change the corresponding setting in `.env`:
+
+```dotenv
+LOCAL_API_PORT=8081
+LOCAL_STORAGE_PORT=9000
+LOCAL_MAILPIT_UI_PORT=8025
+LOCAL_MAILPIT_SMTP_PORT=1025
+```
+
+Then recreate the affected containers:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+When `LOCAL_API_PORT` changes, update the App's `NEXT_PUBLIC_API_URL`.
+When `LOCAL_STORAGE_PORT` changes, update the App's
+`NEXT_IMAGE_REMOTE_ORIGINS` to the exact origin, such as
+`http://127.0.0.1:9100`. The API automatically signs local media URLs with
+the configured storage port.
+
+### Sign-up or password-reset emails do not arrive
+
+This is expected locally. Open Mailpit using `LOCAL_MAILPIT_UI_PORT`. With the
+default setting, its address is
+[http://127.0.0.1:8025](http://127.0.0.1:8025).
+
+### Old local data is causing errors
+
+First try a normal restart. If you are certain that you do not need any local
+accounts, tracks, files, or emails, reset the local setup:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
+
+The first command permanently deletes all local project data.
+
+## How the local setup fits together
 
 ```text
-Browser / frontend
-   |  HTTPS, JSON, secure cookies
-   v
-Nginx :443
+TrackFusionWeb App
    |
    v
-Express API :8081
-   |-- PostgreSQL       users, tracks, favorites, tokens
-   |-- Redis + Bull     sessions, job state, background queues
-   |      `-- Node/Python workers for media validation and analysis
-   `-- Amazon S3        private audio and image objects
-
-Browser <---- time-limited presigned upload/playback URLs ----> S3
+TrackFusionWeb API ---- PostgreSQL   saved users, tracks, and favorites
+         |\---------- Redis         sign-in sessions and background work
+         |\---------- SeaweedFS     local audio and image storage
+          \---------- Mailpit       local email inbox
 ```
 
-Nginx is the only public application entry point in production. It redirects HTTP to HTTPS and forwards requests to Express on the EC2 loopback interface. PostgreSQL, Redis, and Express are not exposed publicly.
-
-For uploads, the API issues a user-scoped S3 URL and the browser transfers the file directly to S3. The client then submits metadata to the API. A Bull worker downloads and validates the file, extracts audio metadata, moves it to its final S3 key, and stores the database record. Job-status endpoints only return jobs owned by the authenticated user.
-
-For playback, the API checks the track's privacy and ownership before returning a short-lived S3 URL. Public catalog records therefore do not require the bucket itself to be public.
-
-## Getting started
-
-### Docker Compose
-
-Docker Compose is the quickest way to run the API, PostgreSQL, and Redis together.
-
-```bash
-cp .env.example .env
-# Replace the password and secret placeholders in .env.
-docker compose up --build
-```
-
-The API listens on `http://127.0.0.1:8081`. Verify it in another terminal:
-
-```bash
-curl http://127.0.0.1:8081/health
-```
-
-The Compose stack initializes the database before starting Express and keeps PostgreSQL and Redis data in named volumes. Run `docker compose down` to stop it without deleting that data.
-
-S3-backed features require a valid bucket and AWS credentials discoverable by the AWS SDK. With Compose, export temporary AWS credential variables in the launching shell. The application can still start for health and non-storage development with the placeholder bucket from `.env.example`.
-
-### Run directly
-
-Install Node.js 22+, Python 3.12, FFmpeg, PostgreSQL, and Redis. Create a PostgreSQL database matching `DATABASE_URL`, start PostgreSQL and Redis, then run:
-
-```bash
-cp .env.example .env
-npm ci
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
-npm run db:init
-npm run dev
-```
-
-`.env.example` documents the required server, cookie, database, Redis, AWS, email, and media-limit settings. Generate independent secrets of at least 32 characters. Do not store AWS access keys in `.env`; use the standard AWS credential chain instead.
+Docker starts and connects these services for you. The local services use test
+data only and do not require an AWS or email-provider account.
 
 ## API overview
 
-All endpoints return JSON unless they return a file download. Protected routes read the JWT from an HTTP-only cookie, and browser clients must include credentials with cross-origin requests.
+Requests and responses use JSON unless an endpoint returns a file. Routes that
+change private user data require a signed-in session.
 
-| Area | Representative endpoints |
+| Area | Example routes |
 | --- | --- |
 | Health | `GET /health` |
-| Authentication | `POST /auth/login`, `POST /auth/logout`, `GET /auth/session`, password reset/change routes |
-| Registration and profiles | `POST /users/register`, `POST /users/check-email`, `GET /users/info/:userId`, OTP routes under `/otp` |
-| Tracks | `GET /tracks/public`, `GET /tracks/user`, `GET /tracks/:id`, `PUT /tracks/:id`, `DELETE /tracks/:id` |
-| Favorites | `GET /tracks/favorites`, `POST /tracks/favorites`, `DELETE /tracks/favorites` |
-| Media | `POST /aws/presigned-url`, track/profile processing and status routes under `/upload` |
+| Accounts | `POST /users/register`, `GET /users/info/:userId` |
+| Sign-in | `POST /auth/login`, `POST /auth/logout`, `GET /auth/session` |
+| Tracks | `GET /tracks/public`, `GET /tracks/user`, `PUT /tracks/:id` |
+| Favorites | `GET /tracks/favorites`, `POST /tracks/favorites` |
+| Uploads | `POST /aws/presigned-url`, `POST /upload/track` |
 | Audio analysis | `POST /audio/analyze`, `GET /audio/analysis-status/:jobId` |
-| Public profiles | Public user tracks and favorites under `/public` |
-| Track attributes | `GET /enums/trackAttributes`, `GET /enums/:type` |
 
-Upload and analysis requests return `202 Accepted` with a job ID. Clients poll the corresponding status endpoint until the job completes or fails.
+Uploads and audio analysis run in the background. The API returns a job ID that
+the App uses to check progress.
 
-## Testing and quality checks
+## Tests and project checks
+
+> This section is for contributors. You do not need these commands just to run
+> and view the API. Install Node.js 22 or newer before using them.
 
 ```bash
+npm ci
 npm test -- --runInBand
-npm run db:init
-npm run db:verify
 npm run smoke
+docker compose exec -T api node scripts/verifyDatabase.js
 ```
 
-`npm run smoke` checks health, session, public-track, and track-attribute responses against `API_BASE_URL` or the local API. `db:init` is rerunnable and `db:verify` checks the expected tables, columns, sequences, and enum values.
+| Command | What it checks |
+| --- | --- |
+| `npm ci` | Installs the exact package versions recorded by the project |
+| `npm test -- --runInBand` | Runs the automated tests one at a time |
+| `npm run smoke` | Makes safe requests to the API at `LOCAL_API_PORT` to confirm it responds correctly |
+| `verifyDatabase.js` | Confirms that the local database has the expected structure |
 
-On every push and pull request, GitHub Actions runs the Jest suite, a production dependency audit, Python syntax checks, PostgreSQL schema checks, live API smoke tests with PostgreSQL and Redis, a production Docker build, and Terraform validation. Dependabot checks application and infrastructure dependencies weekly.
+GitHub Actions also runs the test suite, dependency audit, database checks,
+Docker build, and infrastructure checks on pushes and pull requests.
 
-## Deployment and operations
+## Advanced configuration and deployment
 
-Production runs on one Ubuntu EC2 instance with a Terraform-managed Elastic IP. Nginx terminates HTTPS using a Let's Encrypt certificate and proxies to the API managed by systemd. Certbot renews the certificate automatically, and a scheduled workflow warns when the public certificate has 30 days or less remaining.
+> Most contributors should keep the Docker and `.env.example` defaults. This
+> section is only a high-level reference for production work.
 
-Terraform manages the EC2 instance, network rules, private encrypted S3 bucket, runtime IAM permissions, Elastic IP, GitHub deployment identity, Systems Manager deployment command, and CloudWatch status/CPU alarms. The canonical infrastructure definitions live in [`infrastructure/terraform/`](infrastructure/terraform/), while tracked host and proxy configuration lives in [`deploy/`](deploy/).
+Production runs behind Nginx on AWS EC2, stores private media in Amazon S3, and
+uses PostgreSQL and Redis. Terraform defines the AWS resources, and GitHub
+Actions deploys through short-lived AWS access instead of stored AWS keys.
 
-Production deployment is an explicit GitHub Actions dispatch from `main` through the `production` environment. The workflow:
+- Infrastructure definitions: [`infrastructure/terraform/`](infrastructure/terraform/)
+- Server and Nginx configuration: [`deploy/`](deploy/)
+- Local setting descriptions: [`.env.example`](.env.example)
 
-1. Requires tests, the Docker build, and Terraform validation to pass.
-2. Exchanges GitHub's OIDC identity for short-lived, scoped AWS credentials.
-3. Uploads a release archive to S3 and verifies its SHA-256 checksum on EC2.
-4. Runs the deployment through AWS Systems Manager instead of SSH.
-5. Reconciles and validates managed configuration before downtime, then creates a local backup, installs dependencies, verifies the schema, and checks application and Nginx health.
-6. Restores the previous application release automatically if installation or health checks fail.
-7. Verifies the public HTTPS API and removes the temporary deployment artifact.
+Running without Docker is possible, but it requires manually installing and
+configuring PostgreSQL, Redis, Python 3.12, FFmpeg, object storage, and a local
+email server. Docker is the supported and recommended setup for local work.
 
-### Production environment
+## Security highlights
 
-The production environment is stored only on the EC2 host at
-`/etc/trackfusion/.env`. It is owned by `root`, has mode `0600`, and is loaded
-explicitly by the systemd unit. Secrets, unknown variables, and
-instance-specific settings remain operator-managed in that file and are never
-generated from repository examples.
-
-The tracked [`deploy/ec2/production-managed.env`](deploy/ec2/production-managed.env)
-file is the source of truth for the small allowlist of deployment-managed,
-non-secret settings: the frontend URL, API CORS origin, and cookie security and
-same-site policies. A deployment copies the existing host environment to a
-root-protected temporary directory, reconciles only those allowlisted keys,
-and validates the candidate with the incoming release while the current API is
-still healthy. Invalid candidates abort without stopping or changing the
-running service. Reconciliation is idempotent and never sources the environment
-file or prints its values.
-
-After candidate validation, deployment stops the service, backs up the current
-application and all of `/etc/trackfusion`, verifies that the source environment
-did not change during preflight, and atomically installs the candidate. Any
-later failure restores the prior application and configuration. The first
-deployment may use the protected legacy `/etc/trackfusion/api.env` as its
-source; that file is removed only after the new service passes direct and Nginx
-health checks. The existing `secrets.env` remains a protected recovery artifact
-and is not loaded by the current service.
-
-A rebuilt host must restore `.env` (or the legacy `api.env`) from a protected
-backup before deployment. The deployment scripts deliberately refuse to invent
-a missing production file or generate replacement database and authentication
-secrets.
-
-Change deployment-managed settings in `production-managed.env` through normal
-review and deployment. To change an operator-managed or instance-specific
-setting, edit the host file with `sudoedit`, retain a protected copy until
-verification is complete, validate it, restart the service, and check health:
-
-```bash
-sudoedit /etc/trackfusion/.env
-sudo chown root:root /etc/trackfusion/.env
-sudo chmod 0600 /etc/trackfusion/.env
-sudo /usr/local/bin/node --env-file=/etc/trackfusion/.env /opt/trackfusion/api/scripts/validateEnvironment.js
-sudo systemctl restart trackfusionweb-api
-curl -fsS https://api.trackfusionweb.com/health
-```
-
-Never print, source, commit, or place this file in a release directory. A
-configuration change takes effect only after `trackfusionweb-api` is restarted.
-For local development, copy the repository's `.env.example` to `.env`; that
-local file is ignored by Git and is unrelated to the host configuration.
-
-Production uses exact-origin CORS for `https://www.trackfusionweb.com`, secure
-host-only cookies, and `SameSite=Lax`. The frontend and API are different
-origins but the same HTTPS site, so credentialed requests remain compatible.
-Do not grant wildcard or regex access to Vercel previews. A preview requiring
-authentication should use an isolated non-production API with its exact preview
-origin explicitly configured.
-
-## Security
-
-- Passwords are hashed with bcrypt; reset tokens are time-limited and single-use.
-- Authentication cookies are HTTP-only and use secure production settings. Sessions are stored in Redis.
-- Helmet headers, exact-origin CORS, request-size limits, Joi validation, and global/authentication/OTP rate limits protect the API boundary.
-- S3 public access is blocked. Upload and playback access use expiring signed URLs and user-scoped object keys.
-- EC2 uses an IAM role, while GitHub uses OIDC. Neither deployment path requires long-lived AWS keys in the repository.
-- Only ports 80 and 443 are public for application traffic; SSH is restricted to a configured address.
-- Production secrets are stored in the root-readable `/etc/trackfusion/.env` on the host and are excluded from release artifacts.
-
-## Future improvements
-
-- Separate PostgreSQL, Redis, and the API into independently scalable services as traffic and availability requirements grow.
-- Replace the rerunnable schema initializer with versioned database migrations for safer, traceable schema changes.
-- Configure and verify Mailgun delivery before enabling registration OTP and password-reset emails in production.
-- Expand automated coverage for controllers, background queues, S3 workflows, and end-to-end user journeys.
+- Passwords and time-limited account tokens are stored as secure hashes.
+- Sign-in cookies are HTTP-only and use stricter settings in production.
+- Private media is accessed through short-lived links rather than public files.
+- Production secrets are kept outside the repository.
+- AWS access uses roles and short-lived credentials instead of committed keys.

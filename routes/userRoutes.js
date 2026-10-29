@@ -1,11 +1,11 @@
 // routes/userRoutes.js
-// env variables
-import dotenv from 'dotenv';
-dotenv.config();
-
 import express from "express";
-import { registerUser, getUserInfo, getPublicUserInfoFromId } from "../controllers/userController.js";
-import { isOtpCodeValid, useOtpCode } from '../utils/otpUtils.js';
+import {
+  getPublicUserInfoFromId,
+  isEmailRegistered,
+} from "../controllers/userController.js";
+import { register } from "../controllers/registrationController.js";
+import { otpLimiter } from "../middlewares/limiterConfig.js";
 import { formatValidationError } from '../utils/validationsUtils.js';
 import Joi from 'joi';
 
@@ -13,6 +13,8 @@ import Joi from 'joi';
 // Define the schema for validation
 const registerSchema = Joi.object({
   email: Joi.string()
+    .trim()
+    .lowercase()
     .email()
     .required()
     .messages({
@@ -49,13 +51,14 @@ const registerSchema = Joi.object({
   otp_code: Joi.string()
     .length(6)
     .pattern(/^[0-9]+$/)
-    .required()
+    .optional()
     .messages({
       'string.empty': 'Verification code is required',
       'string.length': 'Verification code must be 6 digits',
       'string.pattern.base': 'Verification code must contain only numbers',
       'any.required': 'Verification code is required'
-    })
+    }),
+  registration_grant: Joi.string().min(32).max(256).optional(),
 });
 
 // Define the schema for validation
@@ -66,72 +69,46 @@ const schema = Joi.object({
   })
 });
 
+const emailSchema = Joi.object({
+  email: Joi.string().trim().lowercase().email().required().messages({
+    "string.empty": "Email is required",
+    "string.email": "Enter a valid email address",
+    "any.required": "Email is required",
+  }),
+});
+
 const router = express.Router();
 
 router.post("/register",
+  otpLimiter,
   async (req, res) => {
-    const { email, username, password, otp_code } = req.body;
-    const { error } = registerSchema.validate({
-      email,
-      username,
-      password,
-      otp_code,
-    });
+    const { error, value } = registerSchema.validate(req.body);
 
     // Check if validation failed
     if (error) {
       return res.status(400).json({ error: formatValidationError(error) });
     }
 
-    try {
-      // Validate OTP before registration
-      const { isValid, reason } = await isOtpCodeValid(email, otp_code, 'registration');
-      if (!isValid) {
-        return res.status(400).json({ error: `Invalid verification code: ${reason}` });
-      }
-
-      // Register user with optional profile picture
-      const result = await registerUser(email, username, password);
-      await useOtpCode(email, otp_code, 'registration');
-
-      res.status(201).json({ result, message: "Successfully registered the user!" });
-    } catch (error) {
-      // Default error handling
-      let statusCode = 500;  // Default to internal server error
-      let errorMessage = error.message || "Internal server error";
-
-      // Custom error handling based on message or code
-      if (error.message === "Please wait before requesting a new verification code.") {
-        statusCode = 429;  // Too many requests (rate limiting)
-        errorMessage = error.message;
-      } else if (error.message === "User already exists with this email") {
-        statusCode = 409;  // Conflict: user already exists
-        errorMessage = error.message;
-      } else if (error.message === "Missing required fields" || error.message === "Invalid verification code") {
-        statusCode = 400;  // Bad request (missing fields or invalid input)
-        errorMessage = error.message;
-      } else if (error.code === '23505') {  // PostgreSQL unique violation error code
-        statusCode = 409;  // Conflict: username or email already exists
-        errorMessage = "Username or email already exists";
-      }
-
-      // Send the error response with the appropriate status code
-      res.status(statusCode).json({ error: errorMessage });
-    }
+    req.body = value;
+    return register(req, res);
   }
 );
 
 router.post("/check-email", async (req, res) => {
-  const { email } = req.body;
+  const { error: validationError, value } = emailSchema.validate(req.body);
+  if (validationError) {
+    return res.status(400).json({ error: validationError.details[0].message });
+  }
+
   try {
-    const userExists = await getUserInfo(email);
+    const userExists = await isEmailRegistered(value.email);
     if (userExists) {
       res.status(200).json({ message: "Email is already registered", exists: true });
     } else {
       res.status(200).json({ message: "Email is available", exists: false });
     }
   } catch (error) {
-    res.status(500).json({ error: error.message || "Internal server error" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

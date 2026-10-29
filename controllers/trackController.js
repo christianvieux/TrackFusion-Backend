@@ -1,6 +1,7 @@
 import { queryToDatabase } from '../services/dbService.js';
 import NodeCache from 'node-cache';
 import { s3Service } from '../services/s3Service.js';
+import { authorizeTrackArtwork, authorizeTrackArtworkList } from '../services/mediaUrlService.js';
 const tokenCache = new NodeCache({ stdTTL: 300 }); // Cache for 5 minutes
 
 
@@ -48,7 +49,7 @@ export async function uploadTrackToDatabase(trackData) {
   ];
   try {
     const result = await queryToDatabase(query, values);
-    return result.rows[0];
+    return authorizeTrackArtwork(result.rows[0]);
   } catch (error) {
     console.error('Error creating track:', error);
     throw new Error('Failed to create track');
@@ -97,8 +98,7 @@ export async function authorizeTrackUrl(trackUrl) {
     if (!authorizedUrl) {
       // Extract the key from the S3 URL
       // Example URL format: https://bucket-name.s3.amazonaws.com/tracks/user-id/filename
-      const urlObj = new URL(trackUrl);
-      const key = urlObj.pathname.substring(1); // Remove leading slash
+      const key = s3Service.getKeyFromPublicUrl(trackUrl);
       
       // Generate a signed URL using the S3 service
       authorizedUrl = await s3Service.getTrackPlaybackUrl(key, 3600); // 1 hour expiration
@@ -139,7 +139,6 @@ export async function deleteTrackFromDatabase(trackId) {
   const values = [trackId];
 
   const result = await queryToDatabase(query, values);
-  console.log('Deleted track:', trackId, result.rows[0]);
   return result.rows[0];
 }
 
@@ -179,7 +178,7 @@ export async function getPublicTracks() {
   try {
     const result = await queryToDatabase(query);
 
-    return result.rows;
+    return authorizeTrackArtworkList(result.rows);
   } catch (error) {
     throw error;
   }
@@ -200,7 +199,7 @@ export async function getUserFavoriteTracks(userId) {
   const values = [userId];
   try {
     const result = await queryToDatabase(query, values);
-    return result.rows;
+    return authorizeTrackArtworkList(result.rows);
   } catch (error) {
     throw error;
   }
@@ -220,7 +219,7 @@ export async function getUserTracks(userId) {
   const values = [userId];
   try {
     const result = await queryToDatabase(query, values);
-    return result.rows;
+    return authorizeTrackArtworkList(result.rows);
   } catch (error) {
     throw error;
   }
