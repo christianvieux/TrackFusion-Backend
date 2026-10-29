@@ -16,7 +16,7 @@ fail() {
   exit 1
 }
 
-test_preflight_rejects_invalid_configuration() {
+test_preflight_rejects_missing_email_secret() {
   local fixture_root="${test_directory}/preflight"
   local config_directory="${fixture_root}/config"
   local command_directory="${fixture_root}/bin"
@@ -57,12 +57,13 @@ EOF
   chmod 0755 "${staging_directory}/deploy/ec2/check-api-health.sh"
 
   cat > "${staging_directory}/deploy/ec2/production-managed.env" <<'EOF'
-FRONTEND_URL=http://www.trackfusionweb.com
-CORS_ALLOWED_ORIGINS=http://www.trackfusionweb.com
+FRONTEND_URL=https://www.trackfusionweb.com
+CORS_ALLOWED_ORIGINS=https://www.trackfusionweb.com
 COOKIE_SECURE=true
 COOKIE_SAME_SITE=lax
 STORAGE_PROVIDER=aws-s3
 EMAIL_PROVIDER=resend
+EMAIL_DELIVERY_ENABLED=true
 EOF
 
   cat > "${config_directory}/.env" <<'EOF'
@@ -113,12 +114,12 @@ EOF
     bash "${staging_directory}/deploy/ec2/deploy-release.sh" \
       "${staging_directory}" "${release_id}" \
       >"${deployment_log}" 2>&1; then
-    fail "deployment preflight accepted invalid production configuration"
+    fail "deployment preflight accepted a missing Resend API key"
   fi
 
-  if ! grep -Fq 'FRONTEND_URL must use https: in production' "${deployment_log}"; then
+  if ! grep -Fq 'RESEND_API_KEY is required when email delivery is enabled' "${deployment_log}"; then
     sed -n '1,80p' "${deployment_log}" >&2
-    fail "deployment preflight did not run the production validator"
+    fail "deployment preflight did not report the missing Resend API key"
   fi
   if grep -Eq '(^|[[:space:]])stop([[:space:]]|$)' "${systemctl_log}"; then
     fail "deployment stopped the service before rejecting invalid configuration"
@@ -228,7 +229,7 @@ EOF
     fail "rollback retained configuration from the failed deployment"
 }
 
-test_preflight_rejects_invalid_configuration
+test_preflight_rejects_missing_email_secret
 test_rollback_restores_release_and_configuration
 
 echo "Deployment safety checks passed"

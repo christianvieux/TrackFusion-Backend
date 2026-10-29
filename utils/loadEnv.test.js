@@ -36,8 +36,9 @@ function configureValidProductionEnvironment() {
     NODE_ENV: "production",
     SESSION_SECRET: "s".repeat(32),
     JWT_SECRET: "j".repeat(32),
-    EMAIL_DELIVERY_ENABLED: "false",
+    EMAIL_DELIVERY_ENABLED: "true",
     EMAIL_PROVIDER: "resend",
+    RESEND_API_KEY: "test-resend-api-key",
     EXPOSE_OTP_IN_DEVELOPMENT: "false",
     EXPOSE_RESET_TOKEN_IN_DEVELOPMENT: "false",
     FRONTEND_URL: "https://www.trackfusionweb.com",
@@ -85,10 +86,13 @@ test("requires strong secrets in production", () => {
   );
 });
 
-test("allows production startup with email-dependent features disabled", () => {
+test("requires email delivery in production", () => {
   configureValidProductionEnvironment();
+  process.env.EMAIL_DELIVERY_ENABLED = "false";
 
-  expect(validateEnvironment()).toEqual({ port: 8081 });
+  expect(() => validateEnvironment()).toThrow(
+    "EMAIL_DELIVERY_ENABLED must be true in production",
+  );
 });
 
 test("requires the Resend API key when email delivery is enabled", () => {

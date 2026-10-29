@@ -386,6 +386,19 @@ The production settings file is `/etc/trackfusion/.env`. It contains secrets:
 never print it with `cat`, load it with `source`, paste it into chat, or commit
 it to Git.
 
+Before the first production deployment, provision the Resend API key directly
+in this protected file with `sudoedit /etc/trackfusion/.env`:
+
+```dotenv
+RESEND_API_KEY=re_replace_with_the_production_key
+```
+
+The deployment manages `EMAIL_PROVIDER=resend` and
+`EMAIL_DELIVERY_ENABLED=true`, but intentionally does not copy secrets from the
+repository or GitHub Actions. The host key is preserved across releases. A
+production deployment now fails during preflight, before stopping the running
+API, if email delivery is disabled or the key is missing.
+
 Validate the file without displaying its values:
 
 ```bash

@@ -234,6 +234,9 @@ export function validateEnvironment() {
     if (process.env.STORAGE_PROVIDER !== "aws-s3") {
       throw new Error("STORAGE_PROVIDER must be aws-s3 in production");
     }
+    if (!emailDeliveryEnabled) {
+      throw new Error("EMAIL_DELIVERY_ENABLED must be true in production");
+    }
     if (process.env.EMAIL_PROVIDER !== "resend") {
       throw new Error("EMAIL_PROVIDER must be resend in production");
     }

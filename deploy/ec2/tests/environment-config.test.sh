@@ -23,6 +23,7 @@ JWT_SECRET=preserve-this-jwt-secret-exactly
 DATABASE_URL=postgresql://trackfusion:preserve-this-password@127.0.0.1:5432/trackfusionweb_db
 COOKIE_SECURE=true
 COOKIE_SAME_SITE=none
+EMAIL_DELIVERY_ENABLED=false
 UNRECOGNIZED_SETTING=must-survive
 EOF
 cp "${source_file}" "${test_directory}/source.env.before"
@@ -37,6 +38,7 @@ grep -Fqx 'COOKIE_SECURE=true' "${candidate_file}"
 grep -Fqx 'COOKIE_SAME_SITE=lax' "${candidate_file}"
 grep -Fqx 'STORAGE_PROVIDER=aws-s3' "${candidate_file}"
 grep -Fqx 'EMAIL_PROVIDER=resend' "${candidate_file}"
+grep -Fqx 'EMAIL_DELIVERY_ENABLED=true' "${candidate_file}"
 grep -Fqx 'SESSION_SECRET=preserve-this-session-secret-exactly' "${candidate_file}"
 grep -Fqx 'JWT_SECRET=preserve-this-jwt-secret-exactly' "${candidate_file}"
 grep -Fqx 'DATABASE_URL=postgresql://trackfusion:preserve-this-password@127.0.0.1:5432/trackfusionweb_db' "${candidate_file}"
