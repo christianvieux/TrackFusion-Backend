@@ -281,6 +281,143 @@ Running without Docker is possible, but it requires manually installing and
 configuring PostgreSQL, Redis, Python 3.12, FFmpeg, object storage, and a local
 email server. Docker is the supported and recommended setup for local work.
 
+## EC2 operations and troubleshooting
+
+> These commands are for the production EC2 instance after you connect to it.
+> Start with the read-only checks. Restarting services or changing production
+> configuration should come only after you understand the error.
+
+### View API status and logs
+
+Check whether the API service is running:
+
+```bash
+sudo systemctl status trackfusionweb-api --no-pager
+```
+
+Show the 100 most recent API log lines:
+
+```bash
+sudo journalctl -u trackfusionweb-api -n 100 --no-pager
+```
+
+Show API logs from the last 30 minutes:
+
+```bash
+sudo journalctl -u trackfusionweb-api --since "30 minutes ago" --no-pager
+```
+
+Follow new API logs as they happen:
+
+```bash
+sudo journalctl -u trackfusionweb-api -f
+```
+
+Press `Ctrl+C` to stop following the logs. Logs can contain user IDs, file
+names, or request details; remove sensitive information before sharing them.
+
+### Check API health
+
+Test the Node.js process directly on the EC2 instance:
+
+```bash
+curl -fsS http://127.0.0.1:8081/health
+```
+
+A healthy response is `{"status":"healthy"}`. Test both the direct API and the
+local Nginx HTTPS path with the project's health script:
+
+```bash
+sudo bash /opt/trackfusion/api/deploy/ec2/check-api-health.sh 5
+```
+
+The health script prints nothing when both checks pass. A nonzero exit code or
+an error message means at least one check failed. From your own computer, the
+public check is
+[https://api.trackfusionweb.com/health](https://api.trackfusionweb.com/health).
+
+### Restart the API safely
+
+Read the recent logs first. If a restart is appropriate:
+
+```bash
+sudo systemctl restart trackfusionweb-api
+sudo systemctl status trackfusionweb-api --no-pager
+curl -fsS http://127.0.0.1:8081/health
+```
+
+A restart briefly interrupts API requests. Do not repeatedly restart a failing
+service; use the logs to find the underlying error.
+
+### Check Nginx
+
+If the direct health check works but the public API fails or returns `502 Bad
+Gateway`, check the Nginx proxy:
+
+```bash
+sudo nginx -t
+sudo systemctl status nginx --no-pager
+sudo journalctl -u nginx -n 100 --no-pager
+sudo tail -n 100 /var/log/nginx/error.log
+```
+
+`sudo nginx -t` must report a successful configuration test. Do not reload
+Nginx after a failed test.
+
+### Check PostgreSQL, Redis, disk, and memory
+
+The API may be running but unable to answer requests when a required service is
+down or the instance is out of resources:
+
+```bash
+sudo systemctl status postgresql redis-server --no-pager
+sudo -u postgres pg_isready
+redis-cli ping
+df -h / /opt/trackfusion /var/log
+free -h
+```
+
+PostgreSQL should report that it is accepting connections, and Redis should
+return `PONG`.
+
+### Validate production settings without printing secrets
+
+The production settings file is `/etc/trackfusion/.env`. It contains secrets:
+never print it with `cat`, load it with `source`, paste it into chat, or commit
+it to Git.
+
+Validate the file without displaying its values:
+
+```bash
+sudo /usr/local/bin/node --env-file=/etc/trackfusion/.env /opt/trackfusion/api/scripts/validateEnvironment.js --local-only
+```
+
+Only edit this file when you have identified a configuration problem. Validate
+it before restarting the API. Normal code deployments should be performed by
+GitHub Actions rather than by editing files under `/opt/trackfusion/api`.
+
+### Quick diagnosis guide
+
+| Symptom | First checks |
+| --- | --- |
+| API service is inactive or repeatedly restarting | API status, recent API logs, production-settings validation |
+| Direct health check fails | API logs, PostgreSQL, Redis, disk space, and memory |
+| Direct health works but the public URL fails | Nginx status, Nginx error log, TLS, DNS, and AWS network rules |
+| Public URL returns `502 Bad Gateway` | API service status, direct health, then Nginx logs |
+| Browser reports a CORS error | Confirm the App origin matches `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS` |
+| A deployment fails | Read the GitHub Actions deployment log; the deployment workflow attempts automatic rollback after a failed health check |
+
+### Important production paths
+
+| Path | Purpose |
+| --- | --- |
+| `/opt/trackfusion/api` | Current deployed API release; do not edit it directly |
+| `/etc/trackfusion/.env` | Root-protected production settings and secrets |
+| `/etc/systemd/system/trackfusionweb-api.service` | API service definition |
+| `/etc/nginx/sites-enabled/trackfusionweb-api` | Enabled Nginx site configuration |
+| `/var/log/nginx/` | Nginx access and error logs |
+| `/var/backups/trackfusionweb-api` | Deployment backups used for recovery |
+
 ## Security highlights
 
 - Passwords and time-limited account tokens are stored as secure hashes.
