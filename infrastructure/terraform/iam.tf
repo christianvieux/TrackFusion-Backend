@@ -68,8 +68,12 @@ data "aws_iam_policy_document" "api" {
 
 resource "aws_iam_policy" "api" {
   name        = "TrackFusionWeb-API_Policy"
-  description = "Grants the API media access plus read/decrypt access to the exact production parameter allowlist."
+  description = "Grants the TrackFusionWeb API access to media objects and approved production parameters."
   policy      = data.aws_iam_policy_document.api.json
+
+  lifecycle {
+    ignore_changes = [description]
+  }
 }
 
 resource "aws_iam_role" "api" {
