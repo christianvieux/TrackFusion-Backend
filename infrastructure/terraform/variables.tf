@@ -62,13 +62,20 @@ variable "developer_ssh_cidr" {
 }
 
 variable "frontend_origins" {
-  description = "Exact browser origins allowed to use presigned S3 requests."
+  description = "Additional nonproduction browser origins allowed to use presigned S3 requests. The production origin comes from deploy/ec2/production-managed.env."
   type        = list(string)
   default = [
-    "https://www.trackfusionweb.com",
     "http://localhost:3000",
     "http://localhost:3001",
   ]
+
+  validation {
+    condition = alltrue([
+      for origin in var.frontend_origins :
+      can(regex("^https?://[^/?#]+$", origin))
+    ])
+    error_message = "frontend_origins must contain exact HTTP(S) origins without paths, queries, or fragments."
+  }
 }
 
 variable "github_repository" {
@@ -108,6 +115,28 @@ variable "github_environment" {
   description = "Protected GitHub environment allowed to deploy."
   type        = string
   default     = "production"
+}
+
+variable "github_plan_environment" {
+  description = "Main-only GitHub environment allowed to create encrypted production Terraform plans."
+  type        = string
+  default     = "production-plan"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+$", var.github_plan_environment))
+    error_message = "github_plan_environment contains unsupported characters."
+  }
+}
+
+variable "github_infrastructure_environment" {
+  description = "Reviewer-protected GitHub environment allowed to apply reviewed production Terraform plans."
+  type        = string
+  default     = "production-infrastructure"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+$", var.github_infrastructure_environment))
+    error_message = "github_infrastructure_environment contains unsupported characters."
+  }
 }
 
 variable "monitoring_alert_email" {

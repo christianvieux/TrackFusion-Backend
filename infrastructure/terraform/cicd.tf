@@ -10,14 +10,32 @@ resource "aws_iam_openid_connect_provider" "github" {
 
 locals {
   github_repository_parts = split("/", var.github_repository)
-  github_oidc_subject = format(
-    "repo:%s@%s/%s@%s:environment:%s",
-    local.github_repository_parts[0],
-    var.github_repository_owner_id,
-    local.github_repository_parts[1],
-    var.github_repository_id,
-    var.github_environment,
-  )
+  github_oidc_subjects = {
+    deploy = format(
+      "repo:%s@%s/%s@%s:environment:%s",
+      local.github_repository_parts[0],
+      var.github_repository_owner_id,
+      local.github_repository_parts[1],
+      var.github_repository_id,
+      var.github_environment,
+    )
+    plan = format(
+      "repo:%s@%s/%s@%s:environment:%s",
+      local.github_repository_parts[0],
+      var.github_repository_owner_id,
+      local.github_repository_parts[1],
+      var.github_repository_id,
+      var.github_plan_environment,
+    )
+    infrastructure = format(
+      "repo:%s@%s/%s@%s:environment:%s",
+      local.github_repository_parts[0],
+      var.github_repository_owner_id,
+      local.github_repository_parts[1],
+      var.github_repository_id,
+      var.github_infrastructure_environment,
+    )
+  }
 }
 
 data "aws_iam_policy_document" "github_deploy_trust" {
@@ -39,7 +57,7 @@ data "aws_iam_policy_document" "github_deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [local.github_oidc_subject]
+      values   = [local.github_oidc_subjects.deploy]
     }
   }
 }
