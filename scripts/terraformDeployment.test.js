@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   analyzeTerraformPlan,
   createPlanMetadata,
@@ -7,6 +8,13 @@ import {
   terraformPlanAad,
   verifyPlanMetadata,
 } from "./terraformDeployment.js";
+
+function planFixture(name) {
+  return JSON.parse(readFileSync(
+    `scripts/fixtures/terraform-plans/${name}`,
+    "utf8",
+  ));
+}
 
 const workflowEnvironment = {
   GITHUB_REPOSITORY: "example/trackfusionweb-api",
@@ -88,6 +96,99 @@ test("blocks an unrecognized resource action even when it is nondestructive", ()
   ));
 
   expect(analysis.safe).toBe(false);
+});
+
+test("accepts the declared ingress policy and deliberate IPv4 egress", () => {
+  const plan = planFixture("safe-network-update.json");
+  const analysis = analyzeTerraformPlan(plan);
+  const summary = renderPlanSummary(analysis);
+
+  expect(analysis).toMatchObject({
+    hasChanges: true,
+    safe: true,
+    counts: { create: 2, update: 2, delete: 0, replace: 0 },
+  });
+  expect(summary).not.toContain("198.51.100.23/32");
+  expect(summary).not.toContain("198.51.100.24/32");
+  expect(summary).not.toContain("0.0.0.0/0");
+});
+
+test("blocks a standalone rule that exposes SSH publicly without reporting CIDRs", () => {
+  const analysis = analyzeTerraformPlan(
+    planFixture("malicious-public-ssh.json"),
+  );
+  const summary = renderPlanSummary(analysis);
+
+  expect(analysis.safe).toBe(false);
+  expect(analysis.blocked).toEqual([
+    expect.stringContaining("does not match the TrackFusionWeb network policy"),
+  ]);
+  expect(summary).not.toContain("198.51.100.24/32");
+  expect(summary).not.toContain("0.0.0.0/0");
+});
+
+test("blocks unauthorized IPv6 represented inside the security group", () => {
+  const analysis = analyzeTerraformPlan(
+    planFixture("malicious-inline-ipv6.json"),
+  );
+
+  expect(analysis.safe).toBe(false);
+  expect(analysis.blocked[0]).toContain("inline security-group rules");
+  expect(renderPlanSummary(analysis)).not.toContain("::/0");
+});
+
+test.each([
+  ["an unexpected ingress port", (plan) => {
+    plan.resource_changes[1].change.after.from_port = 8080;
+    plan.resource_changes[1].change.after.to_port = 8080;
+  }],
+  ["an unexpected ingress CIDR", (plan) => {
+    plan.resource_changes[1].address = "aws_vpc_security_group_ingress_rule.http";
+    plan.resource_changes[1].change.after.from_port = 80;
+    plan.resource_changes[1].change.after.to_port = 80;
+    plan.resource_changes[1].change.after.cidr_ipv4 = "10.0.0.0/8";
+  }],
+  ["IPv6 egress", (plan) => {
+    plan.resource_changes[1].address = "aws_vpc_security_group_egress_rule.all_ipv4";
+    plan.resource_changes[1].type = "aws_vpc_security_group_egress_rule";
+    plan.resource_changes[1].change.after.ip_protocol = "-1";
+    plan.resource_changes[1].change.after.from_port = null;
+    plan.resource_changes[1].change.after.to_port = null;
+    plan.resource_changes[1].change.after.cidr_ipv4 = null;
+    plan.resource_changes[1].change.after.cidr_ipv6 = "::/0";
+  }],
+  ["an unknown security-relevant value", (plan) => {
+    plan.resource_changes[1].change.after.cidr_ipv4 = null;
+    plan.resource_changes[1].change.after_unknown = { cidr_ipv4: true };
+  }],
+])("blocks %s", (_description, mutate) => {
+  const plan = planFixture("malicious-public-ssh.json");
+  mutate(plan);
+  const analysis = analyzeTerraformPlan(plan);
+  const summary = renderPlanSummary(analysis);
+
+  expect(analysis.safe).toBe(false);
+  expect(summary).not.toContain("10.0.0.0/8");
+  expect(summary).not.toContain("::/0");
+});
+
+test("blocks an undeclared rule even when its attributes otherwise look allowed", () => {
+  const plan = planFixture("malicious-public-ssh.json");
+  plan.resource_changes[1].address = "aws_vpc_security_group_ingress_rule.unexpected";
+  plan.resource_changes[1].change.after.cidr_ipv4 = "198.51.100.24/32";
+
+  const analysis = analyzeTerraformPlan(plan);
+  expect(analysis.safe).toBe(false);
+  expect(analysis.blocked[0]).toContain("not a declared TrackFusionWeb network rule");
+});
+
+test("blocks rules targeting an unresolved or different security group", () => {
+  const plan = planFixture("safe-network-update.json");
+  plan.resource_changes[1].change.after.security_group_id = "sg-0fedcba9876543210";
+
+  const analysis = analyzeTerraformPlan(plan);
+  expect(analysis.safe).toBe(false);
+  expect(analysis.blocked[0]).not.toContain("sg-0fedcba9876543210");
 });
 
 test("encrypts and authenticates a Terraform plan for one workflow run", () => {

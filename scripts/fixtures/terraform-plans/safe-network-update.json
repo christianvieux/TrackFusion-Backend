@@ -1,0 +1,126 @@
+{
+  "format_version": "1.2",
+  "variables": {
+    "developer_ssh_cidr": {
+      "value": "198.51.100.24/32"
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_security_group.api",
+      "type": "aws_security_group",
+      "change": {
+        "actions": ["no-op"],
+        "before": {
+          "id": "sg-0123456789abcdef0",
+          "vpc_id": "vpc-0123456789abcdef0",
+          "ingress": [],
+          "egress": []
+        },
+        "after": {
+          "id": "sg-0123456789abcdef0",
+          "vpc_id": "vpc-0123456789abcdef0",
+          "ingress": [],
+          "egress": []
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_vpc_security_group_ingress_rule.ssh",
+      "type": "aws_vpc_security_group_ingress_rule",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "security_group_id": "sg-0123456789abcdef0",
+          "ip_protocol": "tcp",
+          "from_port": 22,
+          "to_port": 22,
+          "cidr_ipv4": "198.51.100.23/32",
+          "cidr_ipv6": null,
+          "prefix_list_id": null,
+          "referenced_security_group_id": null
+        },
+        "after": {
+          "security_group_id": "sg-0123456789abcdef0",
+          "ip_protocol": "tcp",
+          "from_port": 22,
+          "to_port": 22,
+          "cidr_ipv4": "198.51.100.24/32",
+          "cidr_ipv6": null,
+          "prefix_list_id": null,
+          "referenced_security_group_id": null
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_vpc_security_group_ingress_rule.http",
+      "type": "aws_vpc_security_group_ingress_rule",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "security_group_id": "sg-0123456789abcdef0",
+          "ip_protocol": "tcp",
+          "from_port": 80,
+          "to_port": 80,
+          "cidr_ipv4": "0.0.0.0/0",
+          "cidr_ipv6": null,
+          "prefix_list_id": null,
+          "referenced_security_group_id": null
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_vpc_security_group_ingress_rule.https",
+      "type": "aws_vpc_security_group_ingress_rule",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "security_group_id": "sg-0123456789abcdef0",
+          "ip_protocol": "tcp",
+          "from_port": 443,
+          "to_port": 443,
+          "cidr_ipv4": "0.0.0.0/0",
+          "cidr_ipv6": null,
+          "prefix_list_id": null,
+          "referenced_security_group_id": null
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_vpc_security_group_egress_rule.all_ipv4",
+      "type": "aws_vpc_security_group_egress_rule",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "security_group_id": "sg-0123456789abcdef0",
+          "ip_protocol": "-1",
+          "from_port": null,
+          "to_port": null,
+          "cidr_ipv4": "0.0.0.0/0",
+          "cidr_ipv6": null,
+          "prefix_list_id": null,
+          "referenced_security_group_id": null,
+          "description": null
+        },
+        "after": {
+          "security_group_id": "sg-0123456789abcdef0",
+          "ip_protocol": "-1",
+          "from_port": null,
+          "to_port": null,
+          "cidr_ipv4": "0.0.0.0/0",
+          "cidr_ipv6": null,
+          "prefix_list_id": null,
+          "referenced_security_group_id": null,
+          "description": "Deliberate unrestricted IPv4 egress"
+        },
+        "after_unknown": {}
+      }
+    }
+  ]
+}

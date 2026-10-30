@@ -4,6 +4,10 @@ const workflow = readFileSync(
   ".github/workflows/ci-cd.yml",
   "utf8",
 );
+const deploymentAutomation = readFileSync(
+  "infrastructure/terraform/deployment-automation.tf",
+  "utf8",
+);
 
 function section(start, end) {
   const startIndex = workflow.indexOf(start);
@@ -88,4 +92,20 @@ test("withholds plan and apply diagnostics from workflow logs", () => {
   expect(apply).toContain('>"$apply_log" 2>&1');
   expect(plan).not.toContain('cat "$plan_log"');
   expect(apply).not.toContain('cat "$apply_log"');
+});
+
+test("scopes monitoring writes to the managed alarms and optional email topic", () => {
+  expect(deploymentAutomation).toContain(
+    "resources = local.monitoring_alarm_arns",
+  );
+  expect(deploymentAutomation).toContain(
+    "resources = [local.monitoring_alert_topic_arn]",
+  );
+  expect(deploymentAutomation).toContain(
+    'variable = "cloudwatch:AlarmActions"',
+  );
+  expect(deploymentAutomation).toContain('variable = "sns:Protocol"');
+  expect(deploymentAutomation).not.toMatch(
+    /sid\s+=\s+"UpdateMonitoring"[\s\S]*?resources\s+=\s+\["\*"\]/,
+  );
 });

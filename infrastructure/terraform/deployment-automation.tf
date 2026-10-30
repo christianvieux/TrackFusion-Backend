@@ -2,6 +2,12 @@ locals {
   terraform_state_bucket = "trackfusionweb-terraform-state-020457827871-us-east-1"
   terraform_state_key    = "trackfusionweb/api/terraform.tfstate"
 
+  monitoring_alarm_arns = toset([
+    "arn:aws:cloudwatch:${var.aws_region}:${var.aws_account_id}:alarm:TrackFusionWeb-API-StatusCheckFailed",
+    "arn:aws:cloudwatch:${var.aws_region}:${var.aws_account_id}:alarm:TrackFusionWeb-API-HighCPU",
+  ])
+  monitoring_alert_topic_arn = "arn:aws:sns:${var.aws_region}:${var.aws_account_id}:TrackFusionWeb-Alerts"
+
   production_secret_parameter_names = toset([
     "/trackfusionweb/production/api/SESSION_SECRET",
     "/trackfusionweb/production/api/JWT_SECRET",
@@ -434,19 +440,51 @@ data "aws_iam_policy_document" "terraform_apply" {
   }
 
   statement {
-    sid    = "UpdateMonitoring"
+    sid       = "UpdateMonitoringAlarms"
+    effect    = "Allow"
+    actions   = ["cloudwatch:PutMetricAlarm"]
+    resources = local.monitoring_alarm_arns
+
+    condition {
+      test     = "ForAllValues:StringEquals"
+      variable = "cloudwatch:AlarmActions"
+      values   = [local.monitoring_alert_topic_arn]
+    }
+  }
+
+  statement {
+    sid    = "TagMonitoringAlarms"
     effect = "Allow"
     actions = [
-      "cloudwatch:PutMetricAlarm",
       "cloudwatch:TagResource",
       "cloudwatch:UntagResource",
+    ]
+    resources = local.monitoring_alarm_arns
+  }
+
+  statement {
+    sid    = "UpdateMonitoringAlertTopic"
+    effect = "Allow"
+    actions = [
       "sns:CreateTopic",
       "sns:SetTopicAttributes",
-      "sns:Subscribe",
       "sns:TagResource",
       "sns:UntagResource",
     ]
-    resources = ["*"]
+    resources = [local.monitoring_alert_topic_arn]
+  }
+
+  statement {
+    sid       = "SubscribeMonitoringAlertEmail"
+    effect    = "Allow"
+    actions   = ["sns:Subscribe"]
+    resources = [local.monitoring_alert_topic_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "sns:Protocol"
+      values   = ["email"]
+    }
   }
 }
 

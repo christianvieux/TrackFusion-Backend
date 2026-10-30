@@ -14,6 +14,44 @@ const ENVELOPE_MAGIC = Buffer.from("TFPLAN01", "ascii");
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 const MAX_PLAN_AGE_SECONDS = 6 * 60 * 60;
+const API_SECURITY_GROUP_ADDRESS = "aws_security_group.api";
+const PUBLIC_IPV4_CIDR = "0.0.0.0/0";
+
+const NETWORK_RULES = new Map([
+  ["aws_vpc_security_group_ingress_rule.ssh", {
+    type: "aws_vpc_security_group_ingress_rule",
+    protocol: "tcp",
+    fromPort: 22,
+    toPort: 22,
+    cidr: "administrator",
+  }],
+  ["aws_vpc_security_group_ingress_rule.http", {
+    type: "aws_vpc_security_group_ingress_rule",
+    protocol: "tcp",
+    fromPort: 80,
+    toPort: 80,
+    cidr: "public",
+  }],
+  ["aws_vpc_security_group_ingress_rule.https", {
+    type: "aws_vpc_security_group_ingress_rule",
+    protocol: "tcp",
+    fromPort: 443,
+    toPort: 443,
+    cidr: "public",
+  }],
+  ["aws_vpc_security_group_egress_rule.all_ipv4", {
+    type: "aws_vpc_security_group_egress_rule",
+    protocol: "-1",
+    fromPort: null,
+    toPort: null,
+    cidr: "public",
+  }],
+]);
+
+const SECURITY_GROUP_RULE_TYPES = new Set([
+  "aws_vpc_security_group_ingress_rule",
+  "aws_vpc_security_group_egress_rule",
+]);
 
 const AUTOMATED_ACTIONS = new Map([
   ["aws_s3_bucket", new Set(["update"])],
@@ -60,6 +98,223 @@ function changedAttributeNames(change) {
     .sort();
 }
 
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasUnknownValue(value) {
+  if (value === true) return true;
+  if (Array.isArray(value)) return value.some(hasUnknownValue);
+  if (isObject(value)) return Object.values(value).some(hasUnknownValue);
+  return false;
+}
+
+function isEmptyValue(value) {
+  return value === null || value === undefined
+    || (Array.isArray(value) && value.length === 0);
+}
+
+function isAdministratorIpv4Cidr(value) {
+  if (typeof value !== "string") return false;
+  const match = value.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/32$/);
+  if (!match) return false;
+  return match.slice(1).every((octet) => (
+    Number(octet) <= 255 && String(Number(octet)) === octet
+  ));
+}
+
+function configuredAdministratorCidr(plan) {
+  const value = plan.variables?.developer_ssh_cidr?.value;
+  return isAdministratorIpv4Cidr(value) ? value : null;
+}
+
+function findPlannedResource(module, address) {
+  if (!isObject(module)) return null;
+  const resource = Array.isArray(module.resources)
+    ? module.resources.find((candidate) => candidate.address === address)
+    : null;
+  if (resource) return resource;
+  for (const child of module.child_modules ?? []) {
+    const match = findPlannedResource(child, address);
+    if (match) return match;
+  }
+  return null;
+}
+
+function resolveApiSecurityGroupId(plan) {
+  const change = plan.resource_changes.find(
+    (resource) => resource.address === API_SECURITY_GROUP_ADDRESS,
+  );
+  const planned = findPlannedResource(
+    plan.planned_values?.root_module,
+    API_SECURITY_GROUP_ADDRESS,
+  );
+  const value = change?.change?.after?.id ?? planned?.values?.id;
+  return typeof value === "string" && /^sg-[0-9a-f]+$/.test(value) ? value : null;
+}
+
+function hasOnlyCidr(cidrBlocks, expected) {
+  return Array.isArray(cidrBlocks)
+    && cidrBlocks.length === 1
+    && cidrBlocks[0] === expected;
+}
+
+function hasNoAlternateSources(rule) {
+  return [
+    "ipv6_cidr_blocks",
+    "prefix_list_ids",
+    "security_groups",
+    "self",
+  ].every((attribute) => Object.hasOwn(rule, attribute))
+    && isEmptyValue(rule.ipv6_cidr_blocks)
+    && isEmptyValue(rule.prefix_list_ids)
+    && isEmptyValue(rule.security_groups)
+    && (rule.self === false || rule.self === null || rule.self === undefined);
+}
+
+function validateInlineIngressRules(rules, administratorCidr) {
+  if (rules === null || rules === undefined) return true;
+  if (!Array.isArray(rules) || !administratorCidr) return false;
+
+  const seen = new Set();
+  for (const rule of rules) {
+    if (!isObject(rule)
+      || !["protocol", "from_port", "to_port", "cidr_blocks"].every(
+        (attribute) => Object.hasOwn(rule, attribute),
+      )
+      || rule.protocol !== "tcp"
+      || !hasNoAlternateSources(rule)) {
+      return false;
+    }
+    if (!Number.isInteger(rule.from_port) || rule.from_port !== rule.to_port) {
+      return false;
+    }
+    const expectedCidr = rule.from_port === 22
+      ? administratorCidr
+      : [80, 443].includes(rule.from_port) ? PUBLIC_IPV4_CIDR : null;
+    if (!expectedCidr || !hasOnlyCidr(rule.cidr_blocks, expectedCidr)) return false;
+
+    const signature = `${rule.protocol}:${rule.from_port}:${expectedCidr}`;
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+  }
+  return true;
+}
+
+function validateInlineEgressRules(rules) {
+  if (rules === null || rules === undefined) return true;
+  if (!Array.isArray(rules) || rules.length > 1) return false;
+
+  return rules.every((rule) => (
+    isObject(rule)
+    && ["protocol", "from_port", "to_port", "cidr_blocks"].every(
+      (attribute) => Object.hasOwn(rule, attribute),
+    )
+    && rule.protocol === "-1"
+    && [null, 0].includes(rule.from_port)
+    && [null, 0].includes(rule.to_port)
+    && hasOnlyCidr(rule.cidr_blocks, PUBLIC_IPV4_CIDR)
+    && hasNoAlternateSources(rule)
+  ));
+}
+
+function validateSecurityGroupChange(resource, context) {
+  if (resource.address !== API_SECURITY_GROUP_ADDRESS) {
+    return "security-group changes are limited to the TrackFusionWeb API group";
+  }
+  const before = resource.change?.before;
+  const after = resource.change?.after;
+  const afterUnknown = resource.change?.after_unknown ?? {};
+  if (!isObject(before) || !isObject(after)) {
+    return "security-group before/after configuration is unresolved";
+  }
+  if (!["id", "vpc_id", "ingress", "egress"].every(
+    (attribute) => Object.hasOwn(after, attribute),
+  )) {
+    return "security-group networking configuration is incomplete";
+  }
+  if (["id", "vpc_id", "ingress", "egress"].some(
+    (attribute) => hasUnknownValue(afterUnknown[attribute]),
+  )) {
+    return "security-group networking configuration contains unknown values";
+  }
+  if (!context.securityGroupId
+    || after.id !== context.securityGroupId
+    || typeof after.vpc_id !== "string"
+    || !/^vpc-[0-9a-f]+$/.test(after.vpc_id)) {
+    return "security-group identity is unresolved or unauthorized";
+  }
+  if (!validateInlineIngressRules(after.ingress, context.administratorCidr)
+    || !validateInlineEgressRules(after.egress)) {
+    return "inline security-group rules do not match the TrackFusionWeb network policy";
+  }
+  return null;
+}
+
+function validateStandaloneRuleChange(resource, context) {
+  const spec = NETWORK_RULES.get(resource.address);
+  if (!spec || spec.type !== resource.type) {
+    return "security-group rule is not a declared TrackFusionWeb network rule";
+  }
+
+  const action = planAction(resource.change?.actions);
+  const before = resource.change?.before;
+  const after = resource.change?.after;
+  const afterUnknown = resource.change?.after_unknown ?? {};
+  if ((action === "create" && before !== null)
+    || (action === "update" && !isObject(before))
+    || !isObject(after)) {
+    return "security-group rule before/after configuration is unresolved";
+  }
+
+  const securityAttributes = [
+    "security_group_id",
+    "ip_protocol",
+    "from_port",
+    "to_port",
+    "cidr_ipv4",
+    "cidr_ipv6",
+    "prefix_list_id",
+    "referenced_security_group_id",
+  ];
+  if (!securityAttributes.every((attribute) => Object.hasOwn(after, attribute))) {
+    return "security-group rule networking configuration is incomplete";
+  }
+  if (securityAttributes.some(
+    (attribute) => hasUnknownValue(afterUnknown[attribute]),
+  )) {
+    return "security-group rule networking configuration contains unknown values";
+  }
+
+  const expectedCidr = spec.cidr === "administrator"
+    ? context.administratorCidr
+    : PUBLIC_IPV4_CIDR;
+  if (!context.securityGroupId || !expectedCidr) {
+    return "security-group rule policy inputs are unresolved";
+  }
+  if (after.security_group_id !== context.securityGroupId
+    || after.ip_protocol !== spec.protocol
+    || after.from_port !== spec.fromPort
+    || after.to_port !== spec.toPort
+    || after.cidr_ipv4 !== expectedCidr
+    || !isEmptyValue(after.cidr_ipv6)
+    || !isEmptyValue(after.prefix_list_id)
+    || !isEmptyValue(after.referenced_security_group_id)) {
+    return "resulting security-group rule does not match the TrackFusionWeb network policy";
+  }
+  return null;
+}
+
+function validateNetworkChange(resource, context) {
+  if (resource.type === "aws_security_group") {
+    return validateSecurityGroupChange(resource, context);
+  }
+  if (SECURITY_GROUP_RULE_TYPES.has(resource.type)) {
+    return validateStandaloneRuleChange(resource, context);
+  }
+  return null;
+}
+
 export function analyzeTerraformPlan(plan) {
   if (!plan || typeof plan !== "object" || !Array.isArray(plan.resource_changes)) {
     throw new Error("Terraform plan JSON is missing resource_changes");
@@ -68,6 +323,10 @@ export function analyzeTerraformPlan(plan) {
   const changes = [];
   const blocked = [];
   const counts = { create: 0, update: 0, delete: 0, replace: 0 };
+  const networkContext = {
+    administratorCidr: configuredAdministratorCidr(plan),
+    securityGroupId: resolveApiSecurityGroupId(plan),
+  };
 
   for (const resource of plan.resource_changes) {
     const action = planAction(resource.change?.actions);
@@ -102,6 +361,12 @@ export function analyzeTerraformPlan(plan) {
       blocked.push(
         `${address}: ${action} for ${type} requires the administrator bootstrap path`,
       );
+      continue;
+    }
+
+    const networkViolation = validateNetworkChange(resource, networkContext);
+    if (networkViolation) {
+      blocked.push(`${address}: ${networkViolation}`);
     }
   }
 
