@@ -278,6 +278,8 @@ Actions deploys through short-lived AWS access instead of stored AWS keys.
 - Local setting descriptions: [`.env.example`](.env.example)
 - Deployment architecture and configuration audit:
   [`docs/deployment-architecture-audit.md`](docs/deployment-architecture-audit.md)
+- Protected Terraform planning and deployment orchestration:
+  [`docs/deployment-orchestration.md`](docs/deployment-orchestration.md)
 - Engineering backlog: [`docs/engineering-backlog.md`](docs/engineering-backlog.md)
 
 The audit describes the proposed Parameter Store migration. It is a phase 1

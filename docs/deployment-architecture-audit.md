@@ -4,6 +4,14 @@ Audit date: 2026-10-29
 
 Scope: phase 1 architecture, configuration, and migration design only
 
+> Phase 2 baseline update (2026-10-29): an operator authenticated to the
+> intended account, initialized the remote backend, verified existing resource
+> ownership in state, and obtained a live plan of `0 to add, 1 to change, 0 to
+> destroy`; the sole change was the expected S3 CORS production-origin update.
+> This supersedes the remote-state uncertainty recorded below. Phase 2 controls
+> are documented in
+> [`deployment-orchestration.md`](deployment-orchestration.md).
+
 This document records repository behavior that was inspected directly. It does
 not assert that the checked-in Terraform matches the live AWS account, and it
 does not authorize an infrastructure apply, secret read, secret rotation, or
@@ -44,12 +52,8 @@ dependencies on the host.
 
 ### Unverified live assumptions
 
-These require authenticated, read-only AWS inspection before phase 2:
-
-- The configured S3 backend object exists, is versioned and access-controlled,
-  and the native S3 lockfile is working.
-- Every pre-existing S3, EC2, security-group, Elastic IP, IAM, OIDC, SSM, and
-  monitoring object is imported into the selected remote state.
+The remote backend and existing resource tracking were verified at the start of
+Phase 2. These live assumptions remain unverified by repository evidence:
 - The live instance has exactly the checked-in role/profile and no additional
   policies that create configuration drift.
 - The GitHub organization has the OIDC subject customization required by the
@@ -164,21 +168,22 @@ dedicated namespace:
 
 This is the complete initial retrieval allowlist. Do not use a path-recursive
 fetch, accept arbitrary returned keys, or add optional values without an
-explicit inventory update. Standard SecureString with the AWS-managed SSM key
-is sufficient for the present single-account requirement. A customer-managed
-key and a scoped `kms:Decrypt` grant are justified only if a later requirement
-needs independent key policy, cross-account use, or specialized rotation.
+explicit inventory update. Phase 2 selected a customer-managed symmetric KMS
+key for these standard SecureString parameters so EC2 decryption can be isolated
+by principal, SSM service, and exact parameter encryption context. The cost and
+AWS-managed-key tradeoff are recorded in
+[`deployment-orchestration.md`](deployment-orchestration.md#parameter-store-preparation).
 
 Terraform should manage the EC2 retrieval policy, not secret values. Declaring
 secret values through `aws_ssm_parameter`, even with sensitive variables,
 would place plaintext values in Terraform state and is prohibited by this
 design. The GitHub deploy role does not need permission to read parameters.
 
-The EC2 role should receive only `ssm:GetParameters` on the four exact parameter
-ARNs. It should not receive `ssm:GetParametersByPath`, parameter write/delete
-actions, broad Secrets Manager access, or static AWS credentials. If a
-customer-managed KMS key is introduced later, grant decrypt only for that key
-and constrain its use to SSM in the selected region/account.
+The EC2 role receives only `ssm:GetParameters` on the four exact parameter ARNs
+and `kms:Decrypt` on the dedicated key, constrained to SSM and those exact
+`PARAMETER_ARN` encryption contexts. It does not receive
+`ssm:GetParametersByPath`, parameter write/delete actions, broad Secrets Manager
+access, or static AWS credentials.
 
 ### Minimal phase 2 sequence
 
@@ -233,25 +238,20 @@ never with values.
 
 ## Terraform readiness and risk
 
-The configuration uses an encrypted S3 backend and native S3 lockfile. The
-backend bucket itself is not managed here, so its creation, versioning,
-retention, access logging, and recovery controls are unverified. No import
-blocks or committed import manifest establish ownership of the resources whose
-descriptions say they already exist.
+The configuration uses an encrypted S3 backend and native S3 lockfile. An
+operator verified the remote state and that existing resources are tracked.
+The backend bucket itself is not managed here, so its versioning, retention,
+access logging, and recovery controls still require an operational runbook.
 
 High-risk plan areas before any apply are:
 
-- missing imports for the existing bucket and its split configuration
-  resources, EC2 instance, security group/rules, Elastic IP/association, roles,
-  policies/attachments, instance profile, OIDC provider, SSM document, and
-  alarms;
 - EC2 replacement triggers such as subnet, key, or other immutable placement
   changes (the instance and bucket have `prevent_destroy`, which will block but
   not make an unsafe plan acceptable);
 - a new Elastic IP or association changing the address expected by external
   DNS;
-- creating a second account-level GitHub OIDC provider or fixed-name IAM/SSM
-  objects because the live object was not imported;
+- state removal or import mistakes that could make Terraform propose a second
+  account-level GitHub OIDC provider or fixed-name IAM/SSM object;
 - S3 CORS differences affecting browser uploads;
 - the deliberate EC2 AMI `ignore_changes`, which hides image drift and defers
   upgrades;
@@ -259,19 +259,13 @@ High-risk plan areas before any apply are:
   has object access across the entire bucket;
 - a default-VPC/subnet assumption that has not been compared with live state.
 
-Local `terraform fmt -check -recursive` passed during this audit. A clean,
-backend-disabled initialization installed the locked AWS provider and
-`terraform validate -no-color` passed. The configured AWS SSO token was
-expired and could not be refreshed, so no backend read, state list, refresh,
-import check, or plan was performed. This is an explicit phase 2 prerequisite
-rather than evidence that live state is absent.
+Local formatting and validation passed during Phase 1. At the start of Phase 2,
+an authenticated operator initialized the remote backend and obtained a live
+plan of `0 to add, 1 to change, 0 to destroy`; only the expected S3 CORS origin
+update remained.
 
-## Phase 2 entry criteria
+## Remaining Phase 2 and Phase 3 prerequisites
 
-- Authenticated read-only AWS access in the intended account and region.
-- Verified remote backend versioning, access controls, and lock behavior.
-- A reviewed resource-to-state/import map and a plan with no unexplained
-  creates, replacements, deletes, or drift.
 - Confirmation of GitHub OIDC subject customization and production environment
   protections.
 - An authorized operator and protected input method for the four current
