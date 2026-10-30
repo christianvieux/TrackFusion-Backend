@@ -42,11 +42,13 @@ for required_path in \
   "${staging_directory}/package-lock.json" \
   "${staging_directory}/requirements.txt" \
   "${staging_directory}/scripts/validateEnvironment.js" \
+  "${staging_directory}/scripts/productionParameters.js" \
   "${staging_directory}/deploy/ec2/backup-release.sh" \
   "${staging_directory}/deploy/ec2/check-api-health.sh" \
   "${staging_directory}/deploy/ec2/configure-app.sh" \
   "${staging_directory}/deploy/ec2/production-managed.env" \
   "${staging_directory}/deploy/ec2/reconcile-environment-file.sh" \
+  "${staging_directory}/deploy/ec2/reconcile-production-environment.sh" \
   "${staging_directory}/deploy/ec2/prune-release-backups.sh" \
   "${staging_directory}/deploy/ec2/rollback-release.sh" \
   "${staging_directory}/deploy/systemd/trackfusionweb-api.service"; do
@@ -124,14 +126,15 @@ chmod 0700 "${candidate_directory}"
 candidate_environment="${candidate_directory}/.env"
 source_environment_snapshot="${candidate_directory}/source.env"
 install -m 0600 "${source_environment}" "${source_environment_snapshot}"
-bash "${staging_directory}/deploy/ec2/reconcile-environment-file.sh" \
+bash "${staging_directory}/deploy/ec2/reconcile-production-environment.sh" \
   "${source_environment_snapshot}" \
   "${staging_directory}/deploy/ec2/production-managed.env" \
   "${candidate_environment}"
 
 # Validate the new release against the reconciled candidate while the current
-# service remains online. This mode validates only the protected host file and
-# never reads or changes external secret stores.
+# service remains online. Parameter Store access, when explicitly activated,
+# has already produced this protected local candidate; validation never performs
+# a second secret-store read.
 /usr/bin/env -i /usr/local/bin/node \
   --env-file="${candidate_environment}" \
   "${staging_directory}/scripts/validateEnvironment.js" \

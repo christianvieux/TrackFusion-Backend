@@ -276,6 +276,18 @@ Actions deploys through short-lived AWS access instead of stored AWS keys.
 - Infrastructure definitions: [`infrastructure/terraform/`](infrastructure/terraform/)
 - Server and Nginx configuration: [`deploy/`](deploy/)
 - Local setting descriptions: [`.env.example`](.env.example)
+- Deployment architecture and configuration audit:
+  [`docs/deployment-architecture-audit.md`](docs/deployment-architecture-audit.md)
+- Protected Terraform planning and deployment orchestration:
+  [`docs/deployment-orchestration.md`](docs/deployment-orchestration.md)
+- Production Parameter Store migration and operations:
+  [`docs/production-secrets-runbook.md`](docs/production-secrets-runbook.md)
+- Engineering backlog: [`docs/engineering-backlog.md`](docs/engineering-backlog.md)
+
+The Parameter Store integration is implemented but inactive: the current
+service still reads its protected host environment, and no production
+parameter migration has been performed. Follow the runbook only after the
+documented GitHub, IAM, KMS, host, and operator prerequisites are authorized.
 
 Running without Docker is possible, but it requires manually installing and
 configuring PostgreSQL, Redis, Python 3.12, FFmpeg, object storage, and a local
@@ -386,12 +398,10 @@ The production settings file is `/etc/trackfusion/.env`. It contains secrets:
 never print it with `cat`, load it with `source`, paste it into chat, or commit
 it to Git.
 
-Before the first production deployment, provision the Resend API key directly
-in this protected file with `sudoedit /etc/trackfusion/.env`:
-
-```dotenv
-RESEND_API_KEY=re_replace_with_the_production_key
-```
+Until the audited Parameter Store migration is implemented, an authorized
+operator provisions the Resend API key directly in this protected file with
+`sudoedit /etc/trackfusion/.env`. Never place the value in a shell command,
+terminal transcript, ticket, or documentation.
 
 The deployment manages `EMAIL_PROVIDER=resend` and
 `EMAIL_DELIVERY_ENABLED=true`, but intentionally does not copy secrets from the

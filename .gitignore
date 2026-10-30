@@ -25,3 +25,6 @@ __pycache__/
 !*.tfvars.example
 crash.log
 crash.*.log
+
+# Private, untracked engineering and security notes
+local-notes/

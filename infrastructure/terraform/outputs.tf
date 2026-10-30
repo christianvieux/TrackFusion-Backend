@@ -32,6 +32,26 @@ output "github_deploy_role_arn" {
   value       = aws_iam_role.github_deploy.arn
 }
 
+output "github_terraform_plan_role_arn" {
+  description = "Read-only GitHub OIDC role used to create encrypted production Terraform plans."
+  value       = aws_iam_role.github_terraform_plan.arn
+}
+
+output "github_terraform_apply_role_arn" {
+  description = "Reviewer-gated GitHub OIDC role used to apply a reviewed Terraform plan."
+  value       = aws_iam_role.github_terraform_apply.arn
+}
+
+output "production_parameter_kms_key_arn" {
+  description = "Customer-managed KMS key that an operator must select when creating production SecureString parameters."
+  value       = aws_kms_key.production_parameters.arn
+}
+
+output "production_secret_parameter_names" {
+  description = "Exact production Parameter Store allowlist. Values are intentionally outside Terraform."
+  value       = sort(tolist(local.production_secret_parameter_names))
+}
+
 output "monitoring_alert_topic_arn" {
   description = "SNS topic used by the TrackFusionWeb CloudWatch alarms, or null until an alert email is configured."
   value       = try(aws_sns_topic.alerts[0].arn, null)
