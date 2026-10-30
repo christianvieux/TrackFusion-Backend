@@ -12,6 +12,12 @@ Scope: phase 1 architecture, configuration, and migration design only
 > are documented in
 > [`deployment-orchestration.md`](deployment-orchestration.md).
 
+> Phase 3 implementation update (2026-10-29): production Parameter Store
+> reconciliation is implemented behind an explicit root-owned selector and is
+> inactive by default. No parameter was created or read and no production
+> credential was changed. See
+> [`production-secrets-runbook.md`](production-secrets-runbook.md).
+
 This document records repository behavior that was inspected directly. It does
 not assert that the checked-in Terraform matches the live AWS account, and it
 does not authorize an infrastructure apply, secret read, secret rotation, or
@@ -24,7 +30,7 @@ production deployment.
 | Terraform | Declares the AWS provider guardrail, default-VPC lookup, EC2 instance and instance profile, security group rules, Elastic IP, private media bucket controls and CORS, GitHub OIDC provider and deploy role, SSM deployment document, and basic CloudWatch/SNS alarms. |
 | GitHub Actions | On every push and pull request, runs application tests, dependency audit, database/API checks, a Docker build, and Terraform format/validation. A manually dispatched workflow on `main`, gated by the `production` environment, assumes an AWS role with OIDC, uploads a checksummed source archive, invokes the allowlisted SSM document, waits for completion, and checks public HTTPS endpoints. |
 | EC2 deployment scripts | Refuse to replace an unhealthy service, reconcile an allowlisted set of Git-managed nonsecret settings, validate the candidate before stopping the service, back up the release/configuration/database, install dependencies, initialize and verify the schema, configure systemd/Nginx, run health checks, and automatically restore the prior release after failure. |
-| Runtime configuration | systemd reads `/etc/trackfusion/.env`. Deployments overwrite only the seven keys in `deploy/ec2/production-managed.env` and preserve every other host value. The application can also load a JSON object from Secrets Manager when `AWS_SECRETS_ARN` is set, with existing environment values taking precedence. |
+| Runtime configuration | systemd reads the protected generated `/etc/trackfusion/.env`. Deployments reconcile the seven keys in `deploy/ec2/production-managed.env` and preserve instance-specific nonsecrets. Parameter Store reconciliation remains inactive unless `/etc/trackfusion/secret-source` explicitly selects it. The legacy Secrets Manager loader remains temporarily for rollback compatibility, but Parameter Store activation rejects `AWS_SECRETS_ARN`. |
 | Protected credentials | GitHub receives short-lived role credentials through OIDC. EC2 receives AWS credentials through its instance profile. Application signing secrets, the database credential, and the Resend key are currently expected in the root-owned host environment file. Local-only credentials belong in ignored `.env`. |
 | Local Docker Compose | Runs the API, PostgreSQL, Redis, SeaweedFS S3 compatibility layer, storage initialization, and Mailpit. It binds host-facing development ports to loopback and uses local `.env` values only. |
 

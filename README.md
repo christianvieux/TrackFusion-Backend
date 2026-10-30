@@ -280,11 +280,14 @@ Actions deploys through short-lived AWS access instead of stored AWS keys.
   [`docs/deployment-architecture-audit.md`](docs/deployment-architecture-audit.md)
 - Protected Terraform planning and deployment orchestration:
   [`docs/deployment-orchestration.md`](docs/deployment-orchestration.md)
+- Production Parameter Store migration and operations:
+  [`docs/production-secrets-runbook.md`](docs/production-secrets-runbook.md)
 - Engineering backlog: [`docs/engineering-backlog.md`](docs/engineering-backlog.md)
 
-The audit describes the proposed Parameter Store migration. It is a phase 1
-design only: the current service still reads its protected host environment,
-and no production parameter migration has been performed.
+The Parameter Store integration is implemented but inactive: the current
+service still reads its protected host environment, and no production
+parameter migration has been performed. Follow the runbook only after the
+documented GitHub, IAM, KMS, host, and operator prerequisites are authorized.
 
 Running without Docker is possible, but it requires manually installing and
 configuring PostgreSQL, Redis, Python 3.12, FFmpeg, object storage, and a local

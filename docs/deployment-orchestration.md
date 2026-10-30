@@ -3,6 +3,10 @@
 Status: implemented in code, intentionally blocked pending one-time AWS and
 GitHub protection setup.
 
+Phase 3 production secret reconciliation is implemented but remains inactive.
+Its authorized migration and activation procedure is documented in
+[`production-secrets-runbook.md`](production-secrets-runbook.md).
+
 This document covers the Phase 2 workflow only. The configuration inventory and
 secret migration design remain in
 [`deployment-architecture-audit.md`](deployment-architecture-audit.md).
@@ -150,10 +154,13 @@ the account; parameter IAM remains a control, but the key cannot provide a
 second principal-specific boundary. AWS documents this limitation in
 [Restricting SecureString decryption](https://docs.aws.amazon.com/systems-manager/latest/userguide/ps-restrict-decryption.html).
 
-In Phase 3, the one-time operator must create standard SecureString parameters
-with the Terraform output `production_parameter_kms_key_arn`. Do not create
-placeholders, put values in Terraform variables/state, or rotate the existing
-credentials during migration.
+The Phase 3 implementation retrieves these exact names only after an explicit
+host-side selection. The one-time operator must create standard SecureString
+parameters with the Terraform output `production_parameter_kms_key_arn`. Do not
+create placeholders, put values in Terraform variables/state, or rotate the
+existing credentials during migration. Follow the
+[production secrets runbook](production-secrets-runbook.md) for cutover and
+rollback.
 
 ## Production origin and S3 CORS
 
