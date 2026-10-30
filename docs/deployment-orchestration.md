@@ -19,7 +19,8 @@ A manual dispatch of `main` uses this fail-closed sequence:
    backend-disabled Terraform validation.
 2. Verify through the GitHub API that all production environments exist, allow
    only `main`, and that infrastructure apply requires a non-bypassable,
-   non-self approval from an eligible reviewer.
+   explicit approval from at least one configured required reviewer. In the
+   solo-maintainer model, the deployment initiator is permitted to approve.
 3. Enter `production-plan`, assume the read-only Terraform OIDC role, initialize
    the real S3 backend, acquire the native S3 lock, and create a saved plan with
    detailed exit codes.
@@ -29,8 +30,9 @@ A manual dispatch of `main` uses this fail-closed sequence:
    binary plan client-side with an AWS KMS data key.
 6. Upload only the authenticated ciphertext, encrypted data key, and nonsecret
    commit/run metadata with one-day retention.
-7. Wait at the `production-infrastructure` GitHub Environment. Its reviewer can
-   review the redacted plan summary and exact commit before approving.
+7. Wait at the `production-infrastructure` GitHub Environment. The configured
+   required reviewer must review the redacted plan summary and exact commit
+   before approving; the solo maintainer may approve their own deployment.
 8. Assume the separate apply role, download the same run's immutable artifact,
    verify the commit/run/version/age metadata, decrypt and checksum the plan,
    rerun the safety gate, and apply only that saved plan.
@@ -70,19 +72,18 @@ unavailable until approval. See
 
 ### One-time GitHub setup
 
-An administrator must complete and independently verify all of these settings:
+The solo maintainer must complete and verify all of these settings:
 
-1. Add or identify at least one reviewer with repository read access who is not
-   the person dispatching production. The currently available eligible reviewer
-   set could not be enumerated with the available API connection; do not weaken
-   self-review protection to work around that limitation.
+1. Add the maintainer as an eligible required reviewer with repository read
+   access. This is an explicit manual authorization checkpoint, not independent
+   peer review.
 2. Create `production-plan`, select deployment branches, allow only the `main`
    branch, and add the nonsecret environment variable `DEVELOPER_SSH_CIDR` with
    the current administrative IPv4 `/32`. This environment must not have apply
    credentials or secret values.
 3. Create `production-infrastructure`, select only `main`, configure at least one
-   required reviewer, enable “prevent self-review,” and disable administrator
-   bypass.
+   required reviewer, disable “prevent self-review” so the deployment initiator
+   can approve, and disable administrator bypass.
 4. Keep `production` restricted to only `main`. Adding a separate application
    deployment reviewer is optional and would create a second approval after
    infrastructure apply.
@@ -180,9 +181,10 @@ or policy was changed while implementing Phase 2.
 
 Fixture and contract tests cover clean and changed plans, planning failure,
 destructive and bootstrap-only changes, ciphertext tampering, commit/run/stale
-metadata, missing or weak GitHub environments, self-review/bypass, concurrency,
-role separation, hidden diagnostics, and the apply-to-deploy dependency. The
-existing deployment and rollback suites remain part of CI.
+metadata, missing or weak GitHub environments, the solo-maintainer reviewer
+setting, administrator bypass, concurrency, role separation, hidden diagnostics,
+and the apply-to-deploy dependency. The existing deployment and rollback suites
+remain part of CI.
 
 The following behavior remains intentionally unverified until bootstrap:
 

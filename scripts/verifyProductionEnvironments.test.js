@@ -27,8 +27,8 @@ function validConfiguration() {
         { type: "branch_policy" },
         {
           type: "required_reviewers",
-          prevent_self_review: true,
-          reviewers: [{ type: "User", reviewer: { login: "reviewer" } }],
+          prevent_self_review: false,
+          reviewers: [{ type: "User", reviewer: { login: "solo-maintainer" } }],
         },
       ],
     }),
@@ -36,18 +36,19 @@ function validConfiguration() {
   };
 }
 
-test("accepts main-only environments with enforceable infrastructure approval", () => {
+test("accepts main-only environments with solo-maintainer infrastructure approval", () => {
   expect(verifyProductionEnvironments(validConfiguration())).toBe(true);
 });
 
-test("fails closed when the infrastructure environment is missing", () => {
-  const configuration = validConfiguration();
-  delete configuration["production-infrastructure"];
+test.each(["production-plan", "production-infrastructure", "production"])(
+  "fails closed when the %s environment is missing",
+  (name) => {
+    const configuration = validConfiguration();
+    delete configuration[name];
 
-  expect(() => verifyProductionEnvironments(configuration)).toThrow(
-    "production-infrastructure",
-  );
-});
+    expect(() => verifyProductionEnvironments(configuration)).toThrow(name);
+  },
+);
 
 test("rejects an environment without required reviewers", () => {
   const configuration = validConfiguration();
@@ -60,18 +61,30 @@ test("rejects an environment without required reviewers", () => {
   );
 });
 
-test("rejects self-review and administrator bypass", () => {
+test("rejects a required-reviewer rule without an eligible reviewer", () => {
+  const configuration = validConfiguration();
+  configuration["production-infrastructure"].environment.protection_rules[1].reviewers =
+    [];
+
+  expect(() => verifyProductionEnvironments(configuration)).toThrow(
+    "at least one eligible reviewer",
+  );
+});
+
+test("rejects administrator bypass", () => {
   const configuration = validConfiguration();
   configuration["production-infrastructure"].environment.can_admins_bypass = true;
   expect(() => verifyProductionEnvironments(configuration)).toThrow(
     "disallow administrator bypass",
   );
+});
 
-  configuration["production-infrastructure"].environment.can_admins_bypass = false;
+test("rejects self-review prevention for the solo-maintainer model", () => {
+  const configuration = validConfiguration();
   configuration["production-infrastructure"].environment.protection_rules[1]
-    .prevent_self_review = false;
+    .prevent_self_review = true;
   expect(() => verifyProductionEnvironments(configuration)).toThrow(
-    "prevent self-review",
+    "permit reviewer self-approval",
   );
 });
 

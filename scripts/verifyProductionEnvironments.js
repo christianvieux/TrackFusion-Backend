@@ -40,13 +40,16 @@ export function verifyProductionEnvironments(configuration) {
   const reviewerRule = infrastructure.protection_rules?.find(
     ({ type }) => type === "required_reviewers",
   );
-  if (!reviewerRule || reviewerRule.prevent_self_review !== true) {
-    throw new Error(
-      "production-infrastructure must require reviewers and prevent self-review",
-    );
+  if (!reviewerRule) {
+    throw new Error("production-infrastructure must require reviewers");
   }
   if (!Array.isArray(reviewerRule.reviewers) || reviewerRule.reviewers.length < 1) {
     throw new Error("production-infrastructure must have at least one eligible reviewer");
+  }
+  if (reviewerRule.prevent_self_review !== false) {
+    throw new Error(
+      "production-infrastructure must permit reviewer self-approval for the solo-maintainer model",
+    );
   }
 
   return true;

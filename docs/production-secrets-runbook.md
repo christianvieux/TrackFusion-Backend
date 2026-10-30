@@ -27,7 +27,9 @@ Complete the `production-plan`, `production-infrastructure`, and `production`
 environment setup in
 [`deployment-orchestration.md`](deployment-orchestration.md#one-time-github-setup).
 Do not proceed if the workflow preflight fails. A changed Terraform plan must
-be approved by an eligible reviewer who did not initiate the deployment.
+receive explicit manual approval from the configured required reviewer. In the
+solo-maintainer model, the deployment initiator approves their own deployment;
+this is an authorization checkpoint, not independent peer review.
 
 ## 2. Bootstrap AWS IAM and KMS
 
