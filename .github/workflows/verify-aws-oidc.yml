@@ -1,0 +1,53 @@
+name: Verify AWS OIDC roles
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-plan:
+    name: Verify Terraform Plan role
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production-plan
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::020457827871:role/TrackFusionWeb-GitHub-Terraform-Plan_Role
+          allowed-account-ids: "020457827871"
+
+      - name: Verify identity
+        run: |
+          aws sts get-caller-identity \
+            --query '{Account:Account,Arn:Arn}' \
+            --output json
+
+  verify-apply:
+    name: Verify Terraform Apply role
+    needs: verify-plan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production-infrastructure
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::020457827871:role/TrackFusionWeb-GitHub-Terraform-Apply_Role
+          allowed-account-ids: "020457827871"
+
+      - name: Verify identity
+        run: |
+          aws sts get-caller-identity \
+            --query '{Account:Account,Arn:Arn}' \
+            --output json
