@@ -47,6 +47,23 @@ data "aws_iam_policy_document" "api" {
       values   = local.production_secret_parameter_arns
     }
   }
+
+  # GetParameters does not return the KMS key identifier. This explicit deny
+  # makes a successful --with-decryption response proof that every returned
+  # SecureString used the dedicated production-parameter key rather than the
+  # broadly usable AWS-managed SSM key or another customer key.
+  statement {
+    sid           = "DenyDecryptOutsideProductionParameterKey"
+    effect        = "Deny"
+    actions       = ["kms:Decrypt"]
+    not_resources = [aws_kms_key.production_parameters.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.${var.aws_region}.amazonaws.com"]
+    }
+  }
 }
 
 resource "aws_iam_policy" "api" {

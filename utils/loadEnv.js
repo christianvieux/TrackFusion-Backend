@@ -152,7 +152,7 @@ export function validateEnvironment() {
   }
 
   const frontendUrl = validateUrl("FRONTEND_URL", ["http:", "https:"]);
-  validateUrl("DATABASE_URL", ["postgres:", "postgresql:"]);
+  const databaseUrl = validateUrl("DATABASE_URL", ["postgres:", "postgresql:"]);
   validateUrl("REDIS_URL", ["redis:", "rediss:"]);
 
   if (!["aws-s3", "s3-compatible"].includes(process.env.STORAGE_PROVIDER)) {
@@ -231,6 +231,17 @@ export function validateEnvironment() {
   }
 
   if (process.env.NODE_ENV === "production") {
+    if (
+      databaseUrl.username !== "trackfusion" ||
+      !databaseUrl.password ||
+      !["127.0.0.1", "localhost"].includes(databaseUrl.hostname) ||
+      (databaseUrl.port && databaseUrl.port !== "5432") ||
+      databaseUrl.pathname !== "/trackfusionweb_db"
+    ) {
+      throw new Error(
+        "DATABASE_URL must identify the local trackfusion production database",
+      );
+    }
     if (process.env.STORAGE_PROVIDER !== "aws-s3") {
       throw new Error("STORAGE_PROVIDER must be aws-s3 in production");
     }
