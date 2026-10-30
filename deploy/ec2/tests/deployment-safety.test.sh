@@ -36,10 +36,14 @@ test_preflight_rejects_missing_email_secret() {
   cp "${repository_root}/package.json" "${staging_directory}/package.json"
   cp "${repository_root}/scripts/validateEnvironment.js" \
     "${staging_directory}/scripts/validateEnvironment.js"
+  cp "${repository_root}/scripts/productionParameters.js" \
+    "${staging_directory}/scripts/productionParameters.js"
   cp "${repository_root}/utils/loadEnv.js" \
     "${staging_directory}/utils/loadEnv.js"
   cp "${repository_root}/deploy/ec2/reconcile-environment-file.sh" \
     "${staging_directory}/deploy/ec2/reconcile-environment-file.sh"
+  cp "${repository_root}/deploy/ec2/reconcile-production-environment.sh" \
+    "${staging_directory}/deploy/ec2/reconcile-production-environment.sh"
 
   touch \
     "${staging_directory}/package-lock.json" \

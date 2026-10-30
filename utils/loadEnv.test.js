@@ -36,6 +36,7 @@ function configureValidProductionEnvironment() {
     NODE_ENV: "production",
     SESSION_SECRET: "s".repeat(32),
     JWT_SECRET: "j".repeat(32),
+    DATABASE_URL: "postgresql://trackfusion:password@127.0.0.1:5432/trackfusionweb_db",
     EMAIL_DELIVERY_ENABLED: "true",
     EMAIL_PROVIDER: "resend",
     RESEND_API_KEY: "test-resend-api-key",
@@ -83,6 +84,16 @@ test("requires strong secrets in production", () => {
 
   expect(() => validateEnvironment()).toThrow(
     "SESSION_SECRET must be at least 32 characters in production",
+  );
+});
+
+test("requires the production database identity before deployment", () => {
+  configureValidProductionEnvironment();
+  process.env.DATABASE_URL =
+    "postgresql://different-user:password@database.example:5432/other";
+
+  expect(() => validateEnvironment()).toThrow(
+    "DATABASE_URL must identify the local trackfusion production database",
   );
 });
 
