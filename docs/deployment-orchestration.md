@@ -1,15 +1,24 @@
 # Production deployment orchestration
 
-Status: implemented in code, intentionally blocked pending one-time AWS and
-GitHub protection setup.
+Status: active in production. The one-time AWS, IAM/OIDC, KMS, GitHub
+environment, host AWS CLI, and Parameter Store setup was completed on
+2026-10-30.
 
-Phase 3 production secret reconciliation is implemented but remains inactive.
-Its authorized migration and activation procedure is documented in
+Production secret reconciliation is active with the EC2 selector set to
+`ssm-parameter-store`. The completed migration procedure and continuing
+operating guidance are documented in
 [`production-secrets-runbook.md`](production-secrets-runbook.md).
 
-This document covers the Phase 2 workflow only. The configuration inventory and
-secret migration design remain in
+This document covers the production workflow. The configuration inventory and
+secret migration record remain in
 [`deployment-architecture-audit.md`](deployment-architecture-audit.md).
+
+[Production workflow #83](https://github.com/christianvieux/trackfusionweb-api/actions/runs/41111906519)
+completed successfully on 2026-10-30. It verified the protected-environment
+preflight, read-only Terraform OIDC assumption, remote-backend initialization,
+a no-change production plan, application deployment, and the public HTTPS
+check. Because the plan had no changes, the reviewer-gated encrypted-plan apply
+path was correctly skipped and remains untested with a real changed plan.
 
 ## Deployment sequence
 
@@ -58,11 +67,11 @@ and metadata rejects plans older than six hours.
 
 ## Current GitHub protection status
 
-The public repository was inspected through the GitHub API on 2026-10-29.
-`production` exists and allows only `main`, but it has no required reviewers and
-allows administrator bypass. `production-plan` and
-`production-infrastructure` do not exist. Therefore the committed preflight
-fails before requesting AWS credentials. This is intentional.
+The required `production-plan`, `production-infrastructure`, and `production`
+environments were configured before workflow #83. The run's fail-closed
+preflight verified that all three existed and allowed only `main`, and that
+`production-infrastructure` had an eligible required reviewer, allowed the
+solo maintainer to self-approve, and disallowed administrator bypass.
 
 Required-reviewer protection is available for public repositories, including
 GitHub Free, Pro, and Team. GitHub documents that environment protection is
@@ -70,9 +79,10 @@ enforced before a referencing job proceeds and that environment secrets remain
 unavailable until approval. See
 [GitHub deployment environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
 
-### One-time GitHub setup
+### Historical one-time GitHub setup
 
-The solo maintainer must complete and verify all of these settings:
+This setup was completed on 2026-10-30. Preserve these requirements when
+reviewing or recreating the environments:
 
 1. Add the maintainer as an eligible required reviewer with repository read
    access. This is an explicit manual authorization checkpoint, not independent
@@ -95,16 +105,15 @@ Do not merely create the environment names. Referencing a missing environment
 can create it without protection; the preflight is what prevents that unsafe
 state from reaching AWS.
 
-## One-time AWS bootstrap
+## Historical one-time AWS bootstrap
 
-The OIDC roles and KMS keys cannot create themselves. Using the authenticated
-administrator profile, an operator must generate a fresh plan from the Phase 2
-commit after reviewing the code. Do not reuse the earlier saved plan: it
-predates these resources. The fresh bootstrap plan will include the new IAM/KMS
-resources, the EC2 parameter-read policy, and any still-pending S3 CORS update.
-Review every action and apply it only in a separately authorized session.
+The one-time administrator bootstrap was completed before workflow #83. It
+established the IAM/OIDC roles, KMS keys, and exact EC2 parameter-read policy
+described below. These instructions remain as a recovery/recreation record: any
+future identity or key bootstrap still requires a fresh reviewed plan and
+separate authorization rather than the ordinary apply role.
 
-Bootstrap creates:
+The bootstrap created:
 
 - `TrackFusionWeb-GitHub-Terraform-Plan_Role`, which can read the one production
   state object, use its lockfile, refresh only the declared AWS resource
@@ -127,15 +136,16 @@ read/write/delete access only to its `.tflock`; the apply role additionally
 needs `PutObject` on the state object. See the
 [S3 backend permission model](https://developer.hashicorp.com/terraform/language/backend/s3#permissions-required).
 
-After bootstrap, manually exercise each OIDC role with caller-identity and a
-real no-change plan before relying on it. Missing read APIs or a mismatched OIDC
-subject must fail the workflow; adjust only the narrowly scoped policy action
-shown by CloudTrail or the AWS denial, then repeat bootstrap review.
+Workflow #83 exercised the Terraform plan role with caller identity and a real
+no-change plan, and exercised the application-deploy role during the successful
+deployment. The apply role and encrypted changed-plan path were skipped because
+the plan had no changes; they must not be described as production-tested until
+a real reviewed change requires them.
 
 ## Parameter Store preparation
 
-Terraform defines no parameters and no values. Phase 3 retains the exact
-standard SecureString allowlist:
+Terraform defines no parameters and no values. Production uses this exact
+standard `SecureString` allowlist:
 
 - `/trackfusionweb/production/api/SESSION_SECRET`
 - `/trackfusionweb/production/api/JWT_SECRET`
@@ -146,7 +156,7 @@ The EC2 role can call only `ssm:GetParameters` on those four ARNs. It cannot use
 `GetParameter`, history, or recursive path retrieval. GitHub plan, apply, and
 application-deploy roles cannot read them.
 
-This phase selects a customer-managed symmetric KMS key for these high-value
+Production uses a customer-managed symmetric KMS key for these high-value
 credentials. It adds a recurring KMS key/API cost, but permits an independent
 decrypt boundary: EC2 decrypt is limited to calls through SSM and to the exact
 `PARAMETER_ARN` encryption contexts. The cheaper AWS-managed `alias/aws/ssm`
@@ -155,27 +165,27 @@ the account; parameter IAM remains a control, but the key cannot provide a
 second principal-specific boundary. AWS documents this limitation in
 [Restricting SecureString decryption](https://docs.aws.amazon.com/systems-manager/latest/userguide/ps-restrict-decryption.html).
 
-The Phase 3 implementation retrieves these exact names only after an explicit
-host-side selection. The one-time operator must create standard SecureString
-parameters with the Terraform output `production_parameter_kms_key_arn`. Do not
-create placeholders, put values in Terraform variables/state, or rotate the
-existing credentials during migration. Follow the
-[production secrets runbook](production-secrets-runbook.md) for cutover and
-rollback.
+The four parameters were created with the dedicated customer-managed KMS key,
+and the host-side selector is now `ssm-parameter-store`. For future recovery or
+recreation, use the Terraform output `production_parameter_kms_key_arn`; do not
+create placeholders or put values in Terraform variables/state. Follow the
+[production secrets runbook](production-secrets-runbook.md) for operation,
+rotation constraints, and rollback.
 
 ## Production origin and S3 CORS
 
-`deploy/ec2/production-managed.env` remains the Git-managed runtime source of
-truth. Terraform parses its `FRONTEND_URL` and always includes that exact HTTPS
-origin in S3 CORS. `var.frontend_origins` now means additional nonproduction S3
-origins only. API CORS remains independently expressed by
-`CORS_ALLOWED_ORIGINS`, because API requests and presigned S3 browser requests
-have different method/header requirements. The application validator still
-requires production API CORS to include `FRONTEND_URL`.
+`deploy/ec2/production-managed.env` remains the Git-managed nonsecret runtime
+source of truth. The canonical production frontend is
+`https://www.trackfusionweb.com`. Terraform parses its `FRONTEND_URL` and always
+includes that exact HTTPS origin in S3 CORS. `var.frontend_origins` means
+additional nonproduction S3 origins only. API CORS remains independently
+expressed by `CORS_ALLOWED_ORIGINS`, because API requests and presigned S3
+browser requests have different method/header requirements. The application
+validator still requires production API CORS to include `FRONTEND_URL`.
 
 This produces a deterministic shared canonical production origin without
-pretending the API and bucket CORS policies are the same policy. No bucket CORS
-or policy was changed while implementing Phase 2.
+pretending the API and bucket CORS policies are the same policy. Workflow #83's
+no-change plan verified that no further production CORS update was required.
 
 ## Verification boundary
 
@@ -186,14 +196,14 @@ setting, administrator bypass, concurrency, role separation, hidden diagnostics,
 and the apply-to-deploy dependency. The existing deployment and rollback suites
 remain part of CI.
 
-The following behavior remains intentionally unverified until bootstrap:
+Workflow #83 verified the GitHub environment preflight, Terraform plan OIDC
+subject, live AWS provider refresh, no-change plan branch, application-deploy
+OIDC subject, deployment, and public endpoint check. It did not create an
+encrypted plan artifact, enter reviewer approval, assume the Terraform apply
+role, decrypt a saved plan, or run `terraform apply` because no infrastructure
+changes were present.
 
-- live GitHub OIDC assumption for the new plan/apply subjects;
-- completeness of the custom read/apply API action lists against the live AWS
-  provider refresh; and
-- a real no-change workflow plan, reviewer approval, saved-plan apply, and
-  subsequent application deployment.
-
-No live apply should be used merely to test these controls. Establish the
-prerequisites, run a real plan, review its summary, and stop before approval if
+The real changed-plan path therefore remains intentionally unverified. Do not
+create a live change merely to test it. On the next legitimate infrastructure
+change, review the redacted summary and exact commit and stop before approval if
 any result differs from the expected baseline.

@@ -1,13 +1,20 @@
 # Production secrets migration and operation
 
-Status: implementation complete, inactive until separately authorized.
+Status: migration and activation completed on 2026-10-30.
 
-The application still uses the existing protected host environment by default.
-The Parameter Store path becomes authoritative only when a root-owned
-`/etc/trackfusion/secret-source` contains exactly `ssm-parameter-store` with
-mode `0600`. An absent selector or the explicit value `legacy-environment`
-preserves pre-cutover behavior. There is no automatic fallback after Parameter
-Store is selected.
+Production now uses Parameter Store as the secret authority. The root-owned
+mode-`0600` `/etc/trackfusion/secret-source` contains
+`ssm-parameter-store`. The code retains `legacy-environment` behavior when the
+selector is absent or explicitly changed for controlled recovery, but current
+production does not use that path. There is no automatic fallback after
+Parameter Store is selected.
+
+The four production values were migrated to standard SSM `SecureString`
+parameters encrypted by the dedicated customer-managed KMS key.
+[Production workflow #83](https://github.com/christianvieux/trackfusionweb-api/actions/runs/41111906519)
+then completed successfully with a no-change Terraform plan, production
+deployment, and public HTTPS check; the application was confirmed working
+afterward.
 
 Production has exactly three configuration owners:
 
@@ -21,21 +28,24 @@ Production has exactly three configuration owners:
 The generated `/etc/trackfusion/.env` is the runtime projection of those
 sources. It is root-owned and mode `0600`; it is not an authoring source.
 
+Sections 1-6 record the completed migration and remain useful for audited host
+recovery or replacement. They are not pending setup tasks. Sections 7-9 contain
+the continuing rollback, retirement, and secret-change guidance.
+
 ## 1. Establish GitHub protections
 
-Complete the `production-plan`, `production-infrastructure`, and `production`
-environment setup in
-[`deployment-orchestration.md`](deployment-orchestration.md#one-time-github-setup).
-Do not proceed if the workflow preflight fails. A changed Terraform plan must
+Completed 2026-10-30: the `production-plan`, `production-infrastructure`, and
+`production` environments were configured as described in
+[`deployment-orchestration.md`](deployment-orchestration.md#historical-one-time-github-setup).
+For future recovery or reconfiguration, do not proceed if the workflow
+preflight fails. A changed Terraform plan must
 receive explicit manual approval from the configured required reviewer. In the
 solo-maintainer model, the deployment initiator approves their own deployment;
 this is an authorization checkpoint, not independent peer review.
 
 ## 2. Bootstrap AWS IAM and KMS
 
-Using the authenticated administrator profile, generate a fresh Terraform plan
-from the intended Phase 3 commit. Review and separately authorize the bootstrap
-changes. The bootstrap must establish:
+Completed 2026-10-30: the AWS bootstrap established:
 
 - the production-parameter customer-managed KMS key;
 - exact `ssm:GetParameters` access for the EC2 role;
@@ -47,15 +57,16 @@ Do not use the ordinary apply role for IAM/KMS bootstrap and do not reuse a
 saved plan from an earlier commit. Record the nonsensitive Terraform output
 `production_parameter_kms_key_arn` for parameter creation.
 
-The host must also have AWS CLI v2 available as `aws`. Verify its presence and
-version before activation. The deployment fetch runs with static credential
+AWS CLI v2 was available and verified on the production host before activation.
+Continue to verify its presence and version on a replacement host. The
+deployment fetch runs with static credential
 variables and shared credential files disabled, so it can use only the EC2
 instance role. Installing or upgrading the CLI on the host is a separately
 authorized host-maintenance action.
 
 ## 3. Create the four real SecureStrings
 
-Create only these standard parameters in `us-east-1`:
+The migration created only these standard parameters in `us-east-1`:
 
 - `/trackfusionweb/production/api/SESSION_SECRET`
 - `/trackfusionweb/production/api/JWT_SECRET`
@@ -69,8 +80,9 @@ a customer-managed key; omitting the key selects the less isolated AWS-managed
 SSM key. See the
 [AWS SecureString creation guidance](https://docs.aws.amazon.com/systems-manager/latest/userguide/param-create-cli.html).
 
-Never place a value in a command argument. On a trusted, non-recorded terminal,
-with shell tracing and AWS CLI history disabled, use protected temporary files:
+The following procedure is retained for audited recovery or recreation. Never
+place a value in a command argument. On a trusted, non-recorded terminal, with
+shell tracing and AWS CLI history disabled, use protected temporary files:
 
 ```bash
 set -euo pipefail
@@ -176,17 +188,17 @@ supplies each parameter ARN as KMS encryption context; AWS documents the
 
 ## 5. Perform the controlled cutover
 
-Confirm that `AWS_SECRETS_ARN` is absent from the current host environment. The
-reconciler deliberately rejects the cutover if that competing source exists.
-Then select Parameter Store without changing the running service:
+The completed cutover confirmed that `AWS_SECRETS_ARN` was absent from the host
+environment because the reconciler rejects that competing source. It then
+selected Parameter Store without changing the running service:
 
 ```bash
 printf '%s\n' 'ssm-parameter-store' | \
   sudo install -o root -g root -m 0600 /dev/stdin /etc/trackfusion/secret-source
 ```
 
-Dispatch the protected production workflow from the approved `main` commit.
-The existing deployment now:
+The protected workflow was dispatched from the approved `main` commit. Current
+deployments now:
 
 1. retrieves the four exact names once using the EC2 role;
 2. rejects missing, duplicate, unexpected, non-SecureString, empty, or unsafe
@@ -203,8 +215,9 @@ unchanged. After selection, failure never falls back to legacy values.
 
 ## 6. Validate after cutover
 
-Require the workflow, SSM command, and public health checks to pass. On the
-host, inspect metadata only:
+Workflow #83, its SSM deployment command, and its public HTTPS check passed on
+2026-10-30, and the application was confirmed working afterward. For future
+deployments, require those checks to pass. On the host, inspect metadata only:
 
 ```bash
 sudo stat -c '%U:%G %a %n' /etc/trackfusion/.env /etc/trackfusion/secret-source
@@ -219,15 +232,20 @@ normal behavior without logging credentials.
 
 ## 7. Roll back and recover
 
-Before a successful cutover, canceling the selection is explicit:
+Historical pre-cutover recovery guidance: before the completed cutover,
+canceling the selection would have been explicit:
 
 ```bash
 printf '%s\n' 'legacy-environment' | \
   sudo install -o root -g root -m 0600 /dev/stdin /etc/trackfusion/secret-source
 ```
 
-After installation begins, signals handled by the deployment and failed health
-checks invoke the existing release rollback, including restoration of the
+Do not execute this selector change on current production. Returning current
+production to `legacy-environment` requires a separately approved recovery
+procedure.
+
+For future deployments, signals handled after installation begins and failed
+health checks invoke the existing release rollback, including restoration of the
 previous environment. A rollback backup captures the selector as well as the
 environment. If automated rollback fails, use the exact protected backup path
 reported by the deployment with `rollback-release.sh`; never copy its

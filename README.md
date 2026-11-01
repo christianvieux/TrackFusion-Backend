@@ -7,7 +7,7 @@ organizing, and analyzing tracks.
 
 [Live app](https://www.trackfusionweb.com) ·
 [Production API health](https://api.trackfusionweb.com/health) ·
-[App repository](https://github.com/christianvieux/TrackFusion-Frontend)
+[App repository](https://github.com/christianvieux/trackfusionweb-app)
 
 These are the current production addresses for TrackFusionWeb. Local `.env`
 changes do not change these hosted links.
@@ -284,10 +284,12 @@ Actions deploys through short-lived AWS access instead of stored AWS keys.
   [`docs/production-secrets-runbook.md`](docs/production-secrets-runbook.md)
 - Engineering backlog: [`docs/engineering-backlog.md`](docs/engineering-backlog.md)
 
-The Parameter Store integration is implemented but inactive: the current
-service still reads its protected host environment, and no production
-parameter migration has been performed. Follow the runbook only after the
-documented GitHub, IAM, KMS, host, and operator prerequisites are authorized.
+Production secret migration was completed on October 30, 2026. The EC2 host
+selects `ssm-parameter-store` and deployments retrieve `SESSION_SECRET`,
+`JWT_SECRET`, `DATABASE_URL`, and `RESEND_API_KEY` from KMS-encrypted SSM
+`SecureString` parameters before generating the protected runtime environment.
+The completed migration procedure and current operating guidance are retained
+in the production secrets runbook.
 
 Running without Docker is possible, but it requires manually installing and
 configuring PostgreSQL, Redis, Python 3.12, FFmpeg, object storage, and a local
@@ -398,16 +400,21 @@ The production settings file is `/etc/trackfusion/.env`. It contains secrets:
 never print it with `cat`, load it with `source`, paste it into chat, or commit
 it to Git.
 
-Until the audited Parameter Store migration is implemented, an authorized
-operator provisions the Resend API key directly in this protected file with
-`sudoedit /etc/trackfusion/.env`. Never place the value in a shell command,
-terminal transcript, ticket, or documentation.
+Production now selects `ssm-parameter-store` in the root-owned
+`/etc/trackfusion/secret-source`. The protected `/etc/trackfusion/.env` is a
+generated runtime projection: do not edit its four secret values directly.
+Update production secrets through the authorized Parameter Store procedure in
+[`docs/production-secrets-runbook.md`](docs/production-secrets-runbook.md).
+Secret values must never appear directly in shell command arguments, terminal
+transcripts, logs, tickets, or documentation. Approved AWS CLI operations use
+protected input files as documented in that runbook.
 
 The deployment manages `EMAIL_PROVIDER=resend` and
 `EMAIL_DELIVERY_ENABLED=true`, but intentionally does not copy secrets from the
-repository or GitHub Actions. The host key is preserved across releases. A
-production deployment now fails during preflight, before stopping the running
-API, if email delivery is disabled or the key is missing.
+repository or GitHub Actions. It reconciles the Resend key from Parameter Store
+with the other three production secrets. A production deployment fails during
+preflight, before stopping the running API, if email delivery is disabled or
+the key is missing.
 
 Validate the file without displaying its values:
 
@@ -415,9 +422,11 @@ Validate the file without displaying its values:
 sudo /usr/local/bin/node --env-file=/etc/trackfusion/.env /opt/trackfusion/api/scripts/validateEnvironment.js --local-only
 ```
 
-Only edit this file when you have identified a configuration problem. Validate
-it before restarting the API. Normal code deployments should be performed by
-GitHub Actions rather than by editing files under `/opt/trackfusion/api`.
+Do not edit this generated file directly. Correct the authoritative managed
+setting or Parameter Store value through its approved procedure, then use the
+protected GitHub Actions deployment. The workflow performs preflight validation,
+installation, service restart, and health checks in the required order. Do not
+deploy by editing files under `/opt/trackfusion/api`.
 
 ### Quick diagnosis guide
 
@@ -435,7 +444,8 @@ GitHub Actions rather than by editing files under `/opt/trackfusion/api`.
 | Path | Purpose |
 | --- | --- |
 | `/opt/trackfusion/api` | Current deployed API release; do not edit it directly |
-| `/etc/trackfusion/.env` | Root-protected production settings and secrets |
+| `/etc/trackfusion/.env` | Root-protected generated production runtime settings |
+| `/etc/trackfusion/secret-source` | Root-protected selector; production uses `ssm-parameter-store` |
 | `/etc/systemd/system/trackfusionweb-api.service` | API service definition |
 | `/etc/nginx/sites-enabled/trackfusionweb-api` | Enabled Nginx site configuration |
 | `/var/log/nginx/` | Nginx access and error logs |
