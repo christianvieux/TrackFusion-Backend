@@ -77,18 +77,6 @@ export async function getTrack(trackId) {
   }
 }
 
-// Get a track url by ID
-export async function getTrackUrl(trackId) {
-  const query = `SELECT url FROM tracks WHERE id = $1`;
-  const values = [trackId];
-  try {
-    const result = await queryToDatabase(query, values);
-    return result.rows[0].url;
-  } catch (error) {
-    throw error;
-  }
-}
-
 // authorize the track for playback
 export async function authorizeTrackUrl(trackUrl) {
   try {

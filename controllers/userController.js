@@ -14,25 +14,6 @@ export async function updateUserOnDatabase(userId, properties) {
   }
 }
 
-export async function getUser(userId) {
-  const query = `SELECT * FROM users WHERE id = $1`;
-  const values = [userId];
-
-  try {
-    const result = await queryToDatabase(query, values);
-    const user = result.rows[0];
-
-    if (user) {
-      // Exclude password_hash from the returned user object
-      delete user.password_hash;
-    }
-
-    return user;
-  } catch (error) {
-    throw error;
-  }
-}
-
 export async function getUserInfo(email) {
   try {
     // Query the database for the user
@@ -75,19 +56,6 @@ export async function isEmailRegistered(email) {
 export async function getUserById(userId) {
   const result = await queryToDatabase('SELECT * FROM users WHERE id = $1', [userId]);
   return result.rows[0];
-}
-
-export async function getUserProfilePictureUrl(userId) {
-  // Query the database to retrieve the user's profile picture URL
-  const result = await queryToDatabase('SELECT profile_picture_url FROM users WHERE id = $1', [userId]);
-  
-  // If the user exists and has a profile picture URL, return it
-  if (result.rows.length > 0) {
-    return result.rows[0].profile_picture_url;
-  }
-
-  // If no profile picture exists, return null or any appropriate default value
-  return null;
 }
 
 export async function getPublicUserInfoFromId(userId) {
@@ -146,6 +114,3 @@ export async function getUserPublicTracks(userId) {
     throw error;
   }
 }
-
-
-// Define other user-related functions (e.g., getUser, updateUser, deleteUser)

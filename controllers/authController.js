@@ -47,40 +47,6 @@ export function establishUserSession(req, res, userData) {
   return req.session.user;
 }
 
-export async function authorizeSession(req, res, userEmail) {
-  try {
-    // Fetch user info
-    const user = await getUserInfo(userEmail);
-
-    if (!user) {
-      return res.status(401).json({ error: "User not found" });
-    }
-
-    // Excluding the password (sensitive info)
-    delete user.password_hash;
-
-    // Generate JWT token
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
-
-    // Set the JWT token in the cookie with security flags
-    res.cookie("token", token, tokenCookieOptions);
-
-    // Set the user data in the session
-    req.session.user = {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-    };
-
-    return res.status(200).json({ message: "Session authorized", user: req.session.user });
-  } catch (error) {
-    console.error("Error during session authorization:", error);
-    return res.status(500).json({ error: "Server error" });
-  }
-}
-
 export async function login(req, res) {
   // Define the schema for validating email and password
   const schema = Joi.object({
@@ -348,22 +314,6 @@ export async function verifyResetToken(req, res) {
 
 export async function updateUserPassword(userId, hashedPassword) {
   await queryToDatabase('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, hashedPassword]);
-}
-
-export async function updateUserProfilePictureInDatabase(userId, profilePictureUrl) {
-  try {
-    const query = `
-      UPDATE users 
-      SET profile_picture_url = $1
-      WHERE id = $2
-    `;
-
-    const result = await queryToDatabase(query, [profilePictureUrl, userId]);
-    return result;
-  } catch (error) {
-    console.error('Error updating profile picture:', error);
-    throw new Error('Database update failed');
-  }
 }
 
 export async function updatePassword(req, res) {
