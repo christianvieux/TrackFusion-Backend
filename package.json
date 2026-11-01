@@ -36,7 +36,7 @@
     "express-rate-limit": "^8.7.1",
     "express-session": "^1.18.0",
     "helmet": "^8.0.0",
-    "joi": "^17.13.3",
+    "joi": "^17.13.9",
     "jsonwebtoken": "^9.0.2",
     "mime": "^4.0.4",
     "multer": "^2.5.0",
