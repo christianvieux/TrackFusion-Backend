@@ -23,20 +23,6 @@ export const audioAnalysisQueue = new Queue(
   process.env.REDIS_URL
 );
 
-export const cleanupJob = async (job, filePath) => {
-  try {
-    if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-    if (job) {
-      await job.remove();
-      console.log(`Job ${job.id} cleaned up successfully.`);
-    }
-  } catch (error) {
-    console.error(`Error cleaning up job ${job?.id}:`, error);
-  }
-};
-
 const ERROR_TYPES = {
   VIDEO_UNAVAILABLE: "VIDEO_UNAVAILABLE",
   NETWORK_ERROR: "NETWORK_ERROR",

@@ -148,7 +148,3 @@ export async function completeRegistration({
     return userResult.rows[0];
   });
 }
-
-export const registrationInternals = {
-  hashRegistrationGrant,
-};
