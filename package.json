@@ -39,7 +39,6 @@
     "joi": "^17.13.9",
     "jsonwebtoken": "^9.0.2",
     "mime": "^4.0.4",
-    "multer": "^2.5.0",
     "music-metadata": "^12.2.3",
     "node-cache": "^5.1.2",
     "nodemailer": "^10.2.1",
