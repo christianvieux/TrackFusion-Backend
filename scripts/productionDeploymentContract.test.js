@@ -5,6 +5,25 @@ const backup = readFileSync("deploy/ec2/backup-release.sh", "utf8");
 const rollback = readFileSync("deploy/ec2/rollback-release.sh", "utf8");
 const compose = readFileSync("compose.yaml", "utf8");
 const workflow = readFileSync(".github/workflows/ci-cd.yml", "utf8");
+const server = readFileSync("index.js", "utf8");
+const environmentValidator = readFileSync(
+  "scripts/validateEnvironment.js",
+  "utf8",
+);
+
+test("validates startup configuration before initializing services", () => {
+  const validation = server.indexOf("validateEnvironment()");
+  const serviceInitialization = server.indexOf('await import("http")');
+
+  expect(validation).toBeGreaterThan(-1);
+  expect(serviceInitialization).toBeGreaterThan(validation);
+  expect(server).not.toContain("initializeEnvironment");
+});
+
+test("keeps the standalone environment validator local and compatible", () => {
+  expect(environmentValidator).toContain("validateEnvironment()");
+  expect(environmentValidator).not.toContain("initializeEnvironment");
+});
 
 test("validates a reconciled candidate before stopping the running service", () => {
   const reconciliation = deploy.lastIndexOf("reconcile-production-environment.sh");
