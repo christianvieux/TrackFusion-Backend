@@ -22,3 +22,20 @@ a private GitHub security advisory, not in this document.
 | ENG-014 | High | GitHub environments | Production deployment requires three main-only environments and reviewer protection for infrastructure apply. | Preserve the documented solo-maintainer environment/reviewer setup and retain the fail-closed API preflight. | Resolved 2026-10-30: setup completed and preflight passed in workflow #83 |
 | ENG-015 | Medium | Host dependencies | AWS CLI v2 is present on the production host, but `bootstrap-host.sh` still does not install or pin it for reproducible replacement hosts. | Incorporate a pinned official AWS CLI v2 into the future image/bootstrap strategy. | Activation prerequisite resolved 2026-10-30; lifecycle hardening remains open |
 | ENG-016 | High | Database credential rotation | Updating the Parameter Store `DATABASE_URL` does not transactionally update the local PostgreSQL role password. | Design a separately approved database credential rotation and rollback procedure before rotating this parameter. | Open; the completed migration does not replace the need for coordinated rotation |
+
+## Final targeted legacy cleanup (2026-11-01)
+
+Removed and verified:
+
+- Login account lookup no longer loads unused favorite and owned track collections; focused tests preserve its authentication session and response contract.
+- Removed the unreachable legacy `queue/imageQueue.js`; it had no startup path or producer and referenced absent Python scripts. The active S3 profile-picture upload queue remains unchanged.
+
+Intentionally retained or deferred:
+
+- Audio analysis and upload workers remain active. The separate audio conversion/cleanup pipeline has no in-repository producer, but its workers and API endpoints still start; production Redis inventory and external API access evidence are required before deletion. No queued jobs were purged.
+- `/enums/trackAttributes` is active. The generic `/enums/:type` compatibility endpoint has no current frontend consumer, but external API usage is unverified.
+- Storage environment aliases remain required by production reconciliation, local Docker, CI, and S3 tooling.
+- The registration session fallback remains until older-client compatibility is retired separately.
+- Database schema, migrations, recovery systems, and deployment configuration were not changed. Deployment of the latest merged backend changes was not independently verified.
+
+Safe static cleanup is complete; the remaining items require compatibility or production operational evidence rather than further speculative deletion.
