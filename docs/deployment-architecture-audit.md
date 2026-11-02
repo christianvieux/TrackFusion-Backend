@@ -39,7 +39,7 @@ production deployment.
 | Terraform | Declares the AWS provider guardrail, default-VPC lookup, EC2 instance and instance profile, security group rules, Elastic IP, private media bucket controls and CORS, GitHub OIDC provider and separated plan/apply/deploy roles, plan and parameter KMS keys, exact EC2 parameter-read permissions, SSM deployment document, and basic CloudWatch/SNS alarms. |
 | GitHub Actions | On every push and pull request, runs application tests, dependency audit, database/API checks, a Docker build, and Terraform format/validation. A manually dispatched workflow on `main` verifies the protected environments, creates a real plan through the read-only OIDC role, conditionally gates and applies a changed saved plan, then uses the deploy role to upload a checksummed source archive, invoke the allowlisted SSM document, wait for completion, and check public HTTPS endpoints. |
 | EC2 deployment scripts | Refuse to replace an unhealthy service, reconcile an allowlisted set of Git-managed nonsecret settings, validate the candidate before stopping the service, back up the release/configuration/database, install dependencies, initialize and verify the schema, configure systemd/Nginx, run health checks, and automatically restore the prior release after failure. |
-| Runtime configuration | systemd reads the protected generated `/etc/trackfusion/.env`. Deployments reconcile the seven keys in `deploy/ec2/production-managed.env`, preserve instance-specific nonsecrets, and retrieve the four secret keys from Parameter Store because `/etc/trackfusion/secret-source` selects `ssm-parameter-store`. The legacy Secrets Manager loader remains temporarily for rollback compatibility, but Parameter Store reconciliation rejects `AWS_SECRETS_ARN`. |
+| Runtime configuration | systemd reads the protected generated `/etc/trackfusion/.env`. Deployments reconcile the seven keys in `deploy/ec2/production-managed.env`, preserve instance-specific nonsecrets, and retrieve the four secret keys from Parameter Store because `/etc/trackfusion/secret-source` selects `ssm-parameter-store`. The application has no alternate secret-store loader, and Parameter Store reconciliation rejects `AWS_SECRETS_ARN`. |
 | Protected credentials | GitHub receives short-lived role credentials through OIDC. EC2 receives AWS credentials through its instance profile. Application signing secrets, the database credential, and the Resend key come from four KMS-encrypted SSM `SecureString` parameters and are projected into the root-owned runtime environment. Local-only credentials belong in ignored `.env`. |
 | Local Docker Compose | Runs the API, PostgreSQL, Redis, SeaweedFS S3 compatibility layer, storage initialization, and Mailpit. It binds host-facing development ports to loopback and uses local `.env` values only. |
 
@@ -100,8 +100,8 @@ shell internals, and `PATH` are intentionally excluded.
 | `FRONTEND_URL` | Canonical browser origin and reset-link base. | No | All API environments | Git-managed production config; local `.env`; CI workflow | HTTP(S); exact HTTPS origin in production | Yes | Currently one of seven reconciled keys |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated API browser origins. | No | All API environments | Git-managed production config; local `.env`; CI workflow | Exact HTTP(S) origins; production must include `FRONTEND_URL` | Yes | Also drives local storage CORS by default |
 | `DEV_URLS` | Extra development-only CORS origins. | No | Development, optional | Local `.env` | Comma-separated origins; not currently validated | No | Documented in example but outside validator |
-| `SESSION_SECRET` | Signs Express sessions. | Yes | All API environments | SSM SecureString in production; local `.env`; CI fixture | Nonempty; at least 32 characters in production | Yes | Active production source is Parameter Store; legacy loader remains inactive pending retirement |
-| `JWT_SECRET` | Signs login tokens and HMACs OTP-related values. | Yes | All API environments | SSM SecureString in production; local `.env`; CI fixture | Nonempty; at least 32 characters in production | Yes | Active production source is Parameter Store; legacy loader remains inactive pending retirement |
+| `SESSION_SECRET` | Signs Express sessions. | Yes | All API environments | SSM SecureString in production; local `.env`; CI fixture | Nonempty; at least 32 characters in production | Yes | Active production source is Parameter Store |
+| `JWT_SECRET` | Signs login tokens and HMACs OTP-related values. | Yes | All API environments | SSM SecureString in production; local `.env`; CI fixture | Nonempty; at least 32 characters in production | Yes | Active production source is Parameter Store |
 | `DATABASE_URL` | PostgreSQL connection string, including credential. | Yes | All API environments | SSM SecureString in production; local `.env`; CI fixture | `postgres:`/`postgresql:` URL; host configure step also enforces the expected local role, host, port, and database | Yes | Active production source is Parameter Store; local Compose assembles it from `POSTGRES_PASSWORD` |
 | `REDIS_URL` | Session store and Bull queue connection. | No, with current unauthenticated local topology | All API environments | Git-managed production config; local `.env`; CI workflow | `redis:` or `rediss:` URL | Yes | Treat as a secret if credentials are ever added |
 | `PYTHON_EXECUTABLE` | Python binary used by audio workers. | No | All API environments | Git-managed production config; local `.env`; CI workflow | Nonempty only; path/executable is not validated | Yes | Queue code also has a fallback |
@@ -127,7 +127,7 @@ shell internals, and `PATH` are intentionally excluded.
 | `EMAIL_DELIVERY_ENABLED` | Enables transactional delivery. | No | All API environments | Git-managed production config; local `.env`; CI workflow | Boolean; must be true in production | Yes | Currently one of seven reconciled keys |
 | `EMAIL_VALIDATE_MX` | Enables DNS MX validation. | No | All API environments | Git-managed production config; local `.env`; CI workflow | Boolean | Yes | Required by validator, not managed by production reconciliation |
 | `EMAIL_ALLOWED_DOMAINS` | Optional registration-domain allowlist. | No | Any, optional | Git-managed production config if used; local `.env` | Comma-separated domain names; not startup-validated | No | Absence allows any otherwise valid domain |
-| `RESEND_API_KEY` | Authenticates production transactional email. | Yes | Production | SSM SecureString in production | Nonempty when Resend delivery is enabled | Conditional | Active production source is Parameter Store; legacy loader remains inactive pending retirement |
+| `RESEND_API_KEY` | Authenticates production transactional email. | Yes | Production | SSM SecureString in production | Nonempty when Resend delivery is enabled | Conditional | Active production source is Parameter Store |
 | `SMTP_HOST` | SMTP server hostname. | No | SMTP delivery only | Local `.env` | Nonempty when SMTP is enabled | Conditional | Production validator disallows SMTP |
 | `SMTP_PORT` | SMTP server port. | No | SMTP delivery only | Local `.env` | Integer 1-65535 | Conditional | Production validator disallows SMTP |
 | `SMTP_SECURE` | Selects implicit SMTP TLS. | No | SMTP delivery only | Local `.env` | Boolean | Conditional | Production validator disallows SMTP |
@@ -137,7 +137,7 @@ shell internals, and `PATH` are intentionally excluded.
 | `EXPOSE_RESET_TOKEN_IN_DEVELOPMENT` | Allows reset tokens in development responses when delivery is disabled. | No | All API environments | Git-managed production config; local `.env`; CI workflow | Boolean; cannot be true in production | Yes | Required even when irrelevant to production |
 | `DELAY_TIME` | Delay used by one track route. | No | Any, optional | Git-managed production config if retained; local `.env` | Positive integer should be added; currently unvalidated | No | Undocumented; code default and comment disagree |
 | `YT_DLP_PROXY_URL` | Optional proxy used by the Python URL audio downloader. | Potentially, if URL contains credentials | Any, optional | SSM SecureString in production only if used; otherwise absent; local `.env` | Proxy URL validation is not currently present | No | Not in example or startup validator |
-| `AWS_SECRETS_ARN` | Enables the legacy JSON Secrets Manager loader. | No | Production, optional legacy path | Remove after the rollback window; do not configure concurrently | ARN/content shape is not validated; JSON keys can populate any unset environment key | No | Absent from the active SSM-backed configuration; loader retirement remains pending |
+| `AWS_SECRETS_ARN` | Legacy configuration marker rejected by production reconciliation. | No | Unsupported | Must be absent | Reconciliation fails closed if present | No | Application loader removed; rejection retained to prevent a competing source |
 
 ### Local, operational, and CI variables
 
@@ -205,7 +205,7 @@ and `kms:Decrypt` on the dedicated key, constrained to SSM and those exact
 `ssm:GetParametersByPath`, parameter write/delete actions, broad Secrets Manager
 access, or static AWS credentials.
 
-### Completed migration sequence and remaining retirement
+### Completed migration and application-loader retirement
 
 1. The remote-state/import audit and administrator bootstrap established the
    reviewed IAM/OIDC roles, KMS keys, and exact-ARN EC2 read policy.
@@ -218,9 +218,10 @@ access, or static AWS credentials.
 4. The selector was set to `ssm-parameter-store`, and workflow #83 validated the
    candidate before service interruption, installed it atomically, completed
    deployment health checks, and left the application working.
-5. The remaining separately authorized work is to retire the inactive
-   `AWS_SECRETS_ARN` loader and SDK dependency and securely expire obsolete
-   recovery artifacts after the rollback window.
+5. The inactive `AWS_SECRETS_ARN` application loader and SDK dependency were
+   retired after the rollback window. Reconciliation still rejects the legacy
+   marker, and obsolete recovery artifacts remain subject to separately
+   authorized retention cleanup.
 
 The detailed protected input and cutover procedures remain in
 [`production-secrets-runbook.md`](production-secrets-runbook.md) as historical
@@ -284,8 +285,6 @@ deployment are complete. Remaining work includes:
 
 - exercising the encrypted, reviewer-gated Terraform apply path only when a
   legitimate changed production plan exists;
-- retiring the legacy Secrets Manager compatibility loader and dependency after
-  the rollback window;
 - designing coordinated credential rotation, especially for `DATABASE_URL`;
 - improving off-host backup, retention, restore testing, and recovery
   objectives; and

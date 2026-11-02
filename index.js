@@ -1,10 +1,9 @@
 import dotenv from "dotenv";
-import { initializeEnvironment, validateEnvironment } from "./utils/loadEnv.js";
+import { validateEnvironment } from "./utils/loadEnv.js";
 
 dotenv.config();
 
 async function startServer() {
-  await initializeEnvironment();
   const { port } = validateEnvironment();
 
   const http = (await import("http")).default;

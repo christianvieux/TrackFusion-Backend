@@ -1,36 +1,3 @@
-// utils/loadEnv.js
-
-export async function initializeEnvironment() {
-  if (!process.env.AWS_SECRETS_ARN) {
-    console.log("Using environment variables for application configuration");
-    return;
-  }
-
-  const { SecretsManagerClient, GetSecretValueCommand } = await import(
-    "@aws-sdk/client-secrets-manager"
-  );
-  const client = new SecretsManagerClient({ region: process.env.AWS_REGION });
-  const command = new GetSecretValueCommand({
-    SecretId: process.env.AWS_SECRETS_ARN,
-  });
-  const response = await client.send(command);
-
-  if (!response.SecretString) {
-    throw new Error("The configured AWS secret does not contain a SecretString");
-  }
-
-  const secrets = JSON.parse(response.SecretString);
-
-  // Explicit environment variables take precedence over values in Secrets Manager.
-  Object.entries(secrets).forEach(([key, value]) => {
-    if (process.env[key] === undefined) {
-      process.env[key] = String(value);
-    }
-  });
-
-  console.log("Loaded application configuration from AWS Secrets Manager");
-}
-
 const REQUIRED_ENVIRONMENT_VARIABLES = [
   "NODE_ENV",
   "HOST",

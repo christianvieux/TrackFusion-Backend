@@ -259,16 +259,16 @@ prune them automatically.
 
 ## 8. Retire legacy sources after the rollback window
 
-Retirement is a separate authorized change after stable production operation:
+Application-loader retirement was completed after stable production operation:
 
-- confirm no deployment or service references `api.env`, `secrets.env`, or
-  `AWS_SECRETS_ARN`;
-- securely remove obsolete compatibility files and expired backups;
-- remove the unused Secrets Manager loader and SDK dependency in a reviewed
-  application change; and
-- retain the selector as `ssm-parameter-store` so authority remains explicit.
+- the unused Secrets Manager loader and SDK dependency were removed in a
+  reviewed application change;
+- Parameter Store reconciliation continues to reject `AWS_SECRETS_ARN`; and
+- the selector remains `ssm-parameter-store` so authority stays explicit.
 
-Do not remove recovery material during the initial cutover.
+Secure removal of obsolete compatibility files and expired backups remains a
+separately authorized host operation. Do not remove recovery material as part
+of an application deployment.
 
 ## 9. Manage future secret changes
 
