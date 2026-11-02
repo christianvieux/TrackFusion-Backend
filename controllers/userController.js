@@ -16,7 +16,6 @@ export async function updateUserOnDatabase(userId, properties) {
 
 export async function getUserInfo(email) {
   try {
-    // Query the database for the user
     const query = "SELECT * FROM users WHERE LOWER(email) = $1";
     const result = await queryToDatabase(query, [normalizeEmail(email)]);
 
@@ -24,21 +23,7 @@ export async function getUserInfo(email) {
       return null;
     }
 
-    const user = result.rows[0];
-
-    // Fetch additional user details
-    const favoriteTracksQuery = "SELECT * FROM user_favorite_tracks WHERE user_id = $1";
-    const ownedTracksQuery = "SELECT * FROM tracks WHERE creator_id = $1";
-
-    const [favoriteTracksResult, ownedTracksResult] = await Promise.all([
-      queryToDatabase(favoriteTracksQuery, [user.id]),
-      queryToDatabase(ownedTracksQuery, [user.id])
-    ]);
-
-    user.favoriteTracks = favoriteTracksResult.rows;
-    user.ownedTracks = ownedTracksResult.rows;
-
-    return user;
+    return result.rows[0];
   } catch (error) {
     console.error("Error fetching user info:", error);
     throw error;
